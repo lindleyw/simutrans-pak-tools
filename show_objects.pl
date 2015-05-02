@@ -20,9 +20,16 @@
 #
 # DESCRIPTION:
 #
+# Displays a variety of reports about the objects in the Simutrans pak.
+#
 # For each commodity
 #   Scan through the range of years
 #      Print a flow diagram of industries that involve the commodity
+#
+# Vehicle performance statistics
+# 
+# Vehicle timeline consistency check
+
 #
 # -t translation_file   (e.g., path to en.tab)
 #
@@ -491,6 +498,8 @@ foreach my $train_name (sort {
     }
 }
 
+#######################################
+
 my @livery_notation = 'a'..'z';
 push @livery_notation, 'A'..'Z';
 my @livery_notations = @livery_notation;
@@ -550,8 +559,6 @@ foreach my $liv (@livery_notations) {
     my $r = $found_liveries{$livery_notes{$liv}}{'retire_year'};
     printf ("  %3s %-30s  %4d-%4d\n", $liv, $livery_notes{$liv}, $i, $r);
 }
-
-
 
 
 1;
