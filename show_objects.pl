@@ -31,16 +31,19 @@
 # Vehicle timeline consistency check
 
 #
-# -t translation_file   (e.g., path to en.tab)
+# [-t translation_file]   Use translation file; e.g., path to en.tab
+# [-r pak_source_dir]     Recursively process all *.dat files in and below given directory
 #
 use strict;
 use Getopt::Std;
-getopt('t');
+getopts('t:r:v');
 use Data::Dumper;
 
 use v5.20;
 use feature qw(signatures);
 no warnings qw(experimental::signatures);
+
+my $verbose = $::opt_v;
 
 my $lang_code;
 my $lang_name;
@@ -48,8 +51,14 @@ my $lang_name;
 my $translate_from;
 my %translation;
 
-if ($::opt_t) {
-    open TRANSLAT, '<', $::opt_t or die "Can't open translation file $::opt_t\n";
+#print Dumper(\%translation);
+
+sub translate ($word) {
+    return (exists $translation{lc($word)} ? $translation{lc($word)} : $word);
+}
+
+sub read_translate_file ($filename) {
+    open TRANSLAT, '<', $filename or die "Can't open translation file $filename\n";
     while (<TRANSLAT>) {
 	chomp;
 	if (/^\s*#(.*)$/) {
@@ -71,22 +80,12 @@ if ($::opt_t) {
     close TRANSLAT;
 }
 
-#print Dumper(\%translation);
-
-sub translate ($word) {
-    return (exists $translation{lc($word)} ? $translation{lc($word)} : $word);
-}
-
 #print translate('bretter');
 
 sub filter_object ($obj) {
 
-    if (!$obj->{'retire_year'}) {
-	$obj->{'retire_year'} = 2999;
-    }
-    if (!$obj->{'retire_month'}) {
-	$obj->{'retire_month'} = 12;
-    }
+    $obj->{'retire_year'} ||= 2999;
+    $obj->{'retire_month'} ||= 12;
 
     # Permit second-level sorting for objects with equal introductory times
     my $power = $obj->{'engine_type'};
@@ -113,16 +112,20 @@ sub filter_object ($obj) {
 }
 
 my %object;
-my %this_object;
 
-use Data::Dumper;
+sub accumulate_object_definition_line ($line) {
+    state %this_object;
 
-while (<>) {
-    if (/^\s*(?<object>\w+)\s*(?:\[(?<sub1>\w+)\](?:\[(?<sub2>\w+)\])?)?\s*=\s*(?<value>.*?)\s*\Z/) {
+    if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<sub1>\w+)\](?:\[(?<sub2>\w+)\])?)?\s*=\s*(?<value>.*?)\s*\Z/) {
 	my ($object, $value, $sub1, $sub2) = @+{qw(object value sub1 sub2)};
 	if (defined $sub1) {
-	    my $subb = defined $sub1 ? "[$sub1]" . (defined $sub2 ? "[$sub2]" : '') : '';
+	    # my $subb = defined $sub1 ? "[$sub1]" . (defined $sub2 ? "[$sub2]" : '') : '';
 	    # print "  [$object]$subb = [$value]\n";
+
+	    # If we have both: "value=50" and "value[0]=50", the later will clobber the former.
+	    if (ref(\$this_object{lc($object)}) eq 'SCALAR') {
+		undef $this_object{lc($object)};
+	    }
 	    if (defined $sub2) {
 		$this_object{lc($object)}{lc($sub1)}{lc($sub2)} = $value;
 	    } else {
@@ -132,7 +135,7 @@ while (<>) {
 	    if (lc($object) eq 'obj') {
 		# Accumulate previous factory into database
 		if (defined $this_object{'name'}) {
-		    print "------------------------\n";
+		    # print "------------------------\n";
 		    filter_object(\%this_object);
 		    %{$object{$this_object{'name'}}} = %this_object;
 		    %this_object = ();
@@ -149,16 +152,79 @@ while (<>) {
     }
 }
 
-# save last object
-if (defined $this_object{'name'}) {
-    filter_object(\%this_object);
-    %{$object{$this_object{'name'}}} = %this_object;
-    %this_object = {};
+# Conversion note
+# 1 km =  0.62137119 miles
+
+
+
+use Data::Dumper;
+
+use File::Find::Rule;
+use Mojo::Path;
+
+my $xlat_file = $::opt_t;
+my $language = 'en';  # Default language
+
+if ($::opt_r) {
+    
+    # create a new pak object.
+    # name it based on the last part of the path
+    # 
+
+    # use File::Find to read in all *.dat files at or below that directory
+    my @files_list = File::Find::Rule->file()->name('*.dat')->readable->in($::opt_r);
+    # print join("\n",@files_list);
+
+    # If no translation file, select one from the text/ directory.  
+    # Available languages can be identified from the glob <??.tab> there.
+
+    my $xlat = Mojo::Path->new($xlat_file);
+    if (! $xlat_file) {
+	$xlat = Mojo::Path->new($::opt_r);
+	push @$xlat, 'text',  "${language}.tab" if defined $xlat;  # e.g., 'text/en.tab'
+    }
+
+    read_translate_file($xlat) if scalar $xlat;
+
+    foreach my $filename (@files_list) {
+	open( my $fh, '<', $filename ) or die "Can't open $filename: $!";
+	print STDERR "** Processing $filename\n" if $verbose;
+	while ( my $line = <$fh> ) {
+	    accumulate_object_definition_line($line);
+	}
+	close $fh;
+	accumulate_object_definition_line('obj=dummy'); # flush trailing object. no 'name=x' so can't be saved.
+    }
+} else {
+
+    # new pak object named 'default'
+
+    if ($xlat_file) {
+	read_translate_file($xlat_file);
+    }
+
+    while (<>) {   # should be <<>> with Perl v5.22
+	accumulate_object_definition_line($_);
+    }
+    accumulate_object_definition_line('obj=dummy'); # flush trailing object. no 'name=x' so can't be saved.
 }
+
 
 #
 #
 #
+
+{
+
+    foreach my $object_name (keys %object) {
+	if ($object{$object_name}{"intro_year"} < 100) {
+	    print "   $object_name  is an internal object\n";
+	}
+
+    }
+
+    print '-'x70 . "\n";
+}
 
 {
     my %chronology;
@@ -401,6 +467,7 @@ sub has_constraint ($object_key, $type, $desired) {
     my @constraints = values %{$object{$object_key}{constraint}{$type}};
     return 1 if scalar @constraints == 0; # unconstrained
     return (any { $_ eq $desired } (@constraints)) # as desired
+      || (any { lc($_) eq 'any' } (@constraints)) # or 'any'
       || (any { lc($_) eq 'none' } (@constraints)); # or 'none'
 }
 
