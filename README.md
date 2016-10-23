@@ -14,12 +14,13 @@ Displays a variety of reports about the objects in the Simutrans pak. e.g.,
 ## Usage
 
     -t translation_file   (e.g., path to en.tab)
+    -r pak_source_dir     Recursively process *.pak in and under the source_dir
+    -v                    Verbose
 
 Example:
 
     perl show_objects.pl -t ~/simutrans-pak128.britain-Std/text/en.tab \
-       ~/simutrans-pak128.britain-Std/boats*/*.dat \
-       ~/simutrans-pak128.britain-Std/boats*/*/*.dat
+       -r ~/simutrans-pak128.britain-Std/boats/
 
 ## History
 
