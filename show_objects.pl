@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 #
 # show_objects.pl
@@ -233,7 +233,7 @@ if ($::opt_r) {
 	next if $object{$object_name}{"intro_year"} < 100;  # Ignore pakset internals
 	foreach my $event (qw(intro retire)) {
 	    my $show_date = sprintf("%4d-%02d", $object{$object_name}{"${event}_year"}, $object{$object_name}{"${event}_month"});
-	    my $event_key = "${show_date}-$event-$object{$object_name}{'short_name'}";
+	    my $event_key = "${show_date}-$event-" . lc($object{$object_name}{'short_name'});
 
 	    my @notes;
 	    if (defined $object{$object_name}{'speed'}) {
@@ -242,12 +242,27 @@ if ($::opt_r) {
 		}
 	    }
 	    if (defined $object{$object_name}{'payload'}) {
-		push @notes, "capacity $object{$object_name}{'payload'}";
+                # NOTE: If this is a hash, the keys (usually 0..4) are
+                # entries, e.g., "p_class[0]" in the *.tab file; whose
+                # values are the class names.
+                my $text ;
+                if (ref $object{$object_name}{'payload'}) {
+                    my @class_caps;
+                    foreach my $class (keys %{$object{$object_name}{'payload'}}) {
+                        next unless $object{$object_name}{payload}->{$class};
+                        push @class_caps, $object{$object_name}{payload}->{$class} . ' ' .
+                        translate("p_class[$class]");
+                    }
+                    $text = 'capacity ' . join (', ', @class_caps) if scalar @class_caps;
+                } else {
+                    $text = "capacity " . $object{$object_name}{'payload'} if $object{$object_name}{'payload'};
+                }
+		push @notes, $text if defined $text;
 	    }
 	    if ($event eq 'retire') {
 		push @notes, "introduced $object{$object_name}{'intro_year'}";
 	    }
-	    my $note = scalar @notes ? ' (' . join(', ',@notes) . ')' : '';
+	    my $note = scalar @notes ? ' (' . join('; ',@notes) . ')' : '';
 	    $chronology{$event_key} = sprintf("%-10s: %-10s %-10s %s",
 					      $show_date,
 					      $event eq 'intro' ? 'Introduce' : 'Retire',
@@ -583,7 +598,7 @@ foreach my $train_name (sort {
 
     next unless (defined $train->{'liverytype'});
 
-    my @our_liveries = sort keys $train->{'liverytype'};
+    my @our_liveries = sort keys %{$train->{'liverytype'}};
     foreach my $livery (@our_liveries) {
 	my $livery_name = $train->{'liverytype'}{$livery};
 	if (!defined $found_liveries{$livery_name}) {
