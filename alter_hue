@@ -12,37 +12,18 @@ my %opts;
 # -i <input file>
 # -o <output file>
 # -h <hue> or -h <hue>,<hue>,...
+#       any hue can be e.g., 'm3' for mapcolor 3
 # -H <hue threshold>
-# -n <new hue>
-# -m <mapcolor[s] to select new hue>
 ### -s <saturation>
 ### -S <saturation threshold>
 # -p <paksize>
 # -x <crop single X offset>
 # -y <crop single y offset>
-# -P    replace with player color
-# -A    replace with alternate player color
-getopt('i:o:h:H:n:m:p:x:y:PA',\%opts);
+# -P <hue[,threshold]>    replace hue with player color
+# -A <hue[,threshold]>   replace with alternate player color
+# -M    list the hues of all (bright) mapcolors [7, 15, etc.]
+getopts('i:o:h:H:n:m:p:x:y:M',\%opts);
 # perhaps later, s:S:
-
-unless (defined $opts{i}) {
-    die "must specify input file with -i";
-}
-unless (-e $opts{i}) {
-    die "Cannot locate input file $opts{i}";
-}
-unless (defined $opts{o}) {
-    die "Must specify output file with -o";
-}
-if ((defined $opts{x} || defined $opts{y}) && $opts{p} <= 0) {
-    die "must specify paksize with -p";
-}
-unless (defined $opts{h} && defined $opts{H}) { # && defined $opts{s} && defined $opts{S}) {
-    die "Must specify -h hue -H hue_threshold";  # ..." -s saturation -S saturation_threshold";
-}
-unless (defined $opts{n} || defined $opts{m}) {
-    die "Must specify new hew with -n hue or -m mapcolor";
-}
 
 my @mapcolor_rgb = (   # from simgraph16.cc
 	36, 75, 103,
@@ -277,6 +258,34 @@ while (scalar @mapcolor_rgb) {
     push @mapcolor, Imager::Color->new(shift @mapcolor_rgb, shift @mapcolor_rgb, shift @mapcolor_rgb);
 }
 
+; $DB::single = 1;
+if ($opts{M}) {
+    my %maphue;
+    my $brightcolor = 7;
+    while ($brightcolor <= 223) {
+        $maphue{$brightcolor} = ($mapcolor[$brightcolor]->hsv)[0];
+        $brightcolor += 8;
+    }
+    my @colorkeys = sort { $maphue{$::a} <=> $maphue{$::b} } keys %maphue;
+    foreach my $c (@colorkeys) {
+        print sprintf("   Mapcolor %3d Hue %3d\n", $c,$maphue{$c});
+    }
+    exit;
+}
+
+unless (defined $opts{i}) {
+    die "must specify input file with -i";
+}
+unless (-e $opts{i}) {
+    die "Cannot locate input file $opts{i}";
+}
+unless (defined $opts{o}) {
+    die "Must specify output file with -o";
+}
+if ((defined $opts{x} || defined $opts{y}) && $opts{p} <= 0) {
+    die "must specify paksize with -p";
+}
+
 my $ii = Imager->new;
 $ii->read(file => $opts{i}) or die;
 # Example:
@@ -311,7 +320,7 @@ if (0) {
     $oimg = $oimg->matrix_transform(matrix=>$m4);
 }
 
-sub replace_color ($img, $constants) {
+sub replace_hue ($img, $constants) {
     # Inspired by http://www.perlmonks.org/?node_id=497355
 
     my $rpnexpr = <<'EOS';
@@ -323,17 +332,24 @@ x y getp1 !pix
 hsva
 EOS
 
-    # @pix hue !phue
-    # !phue @phue @from_hue == @new_hue @phue ifp
-    #  @from_hue == @new_hue @phue ifp
+    return Imager::transform2({ rpnexpr => $rpnexpr,
+                                constants => $constants,
+                                channels => 4},
+                              $img);
+}
 
+sub replace_hue_sat ($img, $constants) {
+    # Inspired by http://www.perlmonks.org/?node_id=497355
 
-    # to_red to_green to_blue to_alpha rgba @pix ifp
-
-    my %constants;
-    # Load values via hash slices
-    # @constants{map {"from_$_"} qw{red green blue alpha}} = $from_color->rgba;
-    # @constants{map {"to_$_"  } qw{red green blue alpha}} = $to_color  ->rgba;
+    my $rpnexpr = <<'EOS';
+x y getp1 !pix
+@pix hue !phue @phue from_hue from_hue_thresh + lt @phue from_hue from_hue_thresh - gt and !match
+@match new_hue @phue if
+@match new_sat @pix sat if
+@pix value
+@pix alpha
+hsva
+EOS
 
     return Imager::transform2({ rpnexpr => $rpnexpr,
                                 constants => $constants,
@@ -364,55 +380,76 @@ EOS
 }
 
 
-# Example of changing hue
-if ($opts{P} || $opts{A}) {
-    my $player_colors = {std => ['#244b67', '#395e7c', '#4c7191', '#608a47', '#7497bd', '#88abd3', '#9cbee9', '#b0d2ff'],
+sub change_to_player_color {
+    my ($img, $colortype, $value, $opts) = @_;
+
+    my $player_colors = {std => ['#244b67', '#395e7c', '#4c7191', '#6084a7', '#7497bd', '#88abd3', '#9cbee9', '#b0d2ff'],
                          alt => ['#7b5803', '#8e6f04', '#a18605', '#b49d07', '#c6b408', '#d9cb0a', '#ece20b', '#fff90d']};
+
+    return replace_color_range($img, {%{$opts}, to_color => $player_colors->{$colortype}->[$value]});
+}
+
+sub change_to_player_colors {
+    my ($img, $colortype, $hue, $hue_threshold) = @_;
 
     foreach my $value (1..7) {
         # Replace gradations of values of the given hue, with special player colors
         my $v = ($value / 8) + (1/16);
         my $v_threshold = 1/16;
-        $oimg = replace_color_range($oimg, {
-            from_hue => $opts{h},
-            from_hue_thresh => $opts{H},
+        $img = change_to_player_color($img, $colortype, $value, {
+            from_hue => $hue,
+            from_hue_thresh => $hue_threshold,
             from_value => $v,
             from_value_thresh => $v_threshold,
-            to_color => $player_colors->{$opts{P} ? 'std':'alt'}->[$value]
         });
     }
-} else {
+    return $img;
+}
 
-    if (defined $opts{m}) {
-        my @from_mapcolors = split(',',$opts{m}); # one or more
-        my @to_hues;
-        foreach my $m (@from_mapcolors) {
-            $DB::single = 1;
-            push @to_hues, ($mapcolor[$m]->hsv)[0];
-        }
-        $opts{n} = join(',',@to_hues);
-        print "New hues from mapcolors: $opts{n}\n";
-    }
 
-    if ($opts{h} =~ /,/) {
-        my @from_hues = split(',',$opts{h});
-        my @to_hues = split(',',$opts{n});
-        my $to_hue;
-        foreach my $from_hue (@from_hues) {
-            $to_hue = shift @to_hues // $to_hue;
-            print "($from_hue->$to_hue) ";
-            $oimg = replace_color($oimg, {
+sub overlay {
+    # $img->rubthrough(src=>$overlay,
+    #              tx=>30,       ty=>50,
+    #              src_minx=>20, src_miny=>30,
+    #              src_maxx=>20, src_maxy=>30);
+}
+
+
+my @changes = split(',',$ARGV[0]);
+
+# e.g., ./alter_hue -i INFILE -o OUTFILE 20+7-m100,40-180,60-p
+#
+# changes hue 20 ± 7 to hue of mapcolor 100,
+# hue 40 ± 10 to hue 180, and hue 60 ± 10 to special player colors.
+
+foreach my $change (@changes) {
+
+    my ($from_hue, $from_hue_threshold, $to_hue) = $change =~ /(\d+)(?:\+(\d+))?(?:\-(a|p|m?\d+))/i;
+
+    $from_hue_threshold //= 10;
+
+    if ($to_hue eq 'p') {
+        $oimg = change_to_player_colors ($oimg, 'std', $from_hue, $from_hue_threshold);
+    } elsif ($to_hue eq 'a') {
+        $oimg = change_to_player_colors ($oimg, 'alt', $from_hue, $from_hue_threshold);
+    } else {
+        if ($to_hue =~ /m(\d+)/) {
+            my $map_color = $1;
+            print '('.($mapcolor[$map_color]->hsv)[0].','.($mapcolor[$map_color]->hsv)[1].")\n";
+            $oimg = replace_hue_sat($oimg, {
                 from_hue => $from_hue,
-                from_hue_thresh => $opts{H},
+                from_hue_thresh => $from_hue_threshold,
+                new_hue => ($mapcolor[$map_color]->hsv)[0],
+                new_sat => ($mapcolor[$map_color]->hsv)[1]*255
+            });
+        } else {
+            print "($from_hue(±$from_hue_threshold)->$to_hue) ";
+            $oimg = replace_hue($oimg, {
+                from_hue => $from_hue,
+                from_hue_thresh => $from_hue_threshold,
                 new_hue => $to_hue
             });
         }
-    } else {
-        $oimg = replace_color($oimg, {
-            from_hue => $opts{h},
-            from_hue_thresh => $opts{H},
-            new_hue => $opts{n}
-        });
     }
 }
 

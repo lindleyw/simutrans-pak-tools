@@ -1,0 +1,105 @@
+#!/usr/bin/env perl
+use v5.26;
+use feature 'signatures';
+no warnings 'experimental';
+
+use Getopt::Std;
+
+use Imager;
+
+my %opts;
+
+# -i <input file>
+# -o <output file>
+# -p <paksize>
+getopts('i:o:p:',\%opts);
+
+unless (defined $opts{i}) {
+    die "must specify input file with -i";
+}
+unless (-e $opts{i}) {
+    die "Cannot locate input file $opts{i}";
+}
+unless (defined $opts{o}) {
+    die "Must specify output file with -o";
+}
+if ($opts{p} <= 0) {
+    die "must specify paksize with -p";
+}
+
+my $recipe = shift @ARGV;
+my @rows = split ';',$recipe;
+
+# given e.g., '0.1,0.2;1.0,1.1'
+# split into rows
+# split each row into columns
+# determine maximum x,y dimensions
+# create image
+# copy each x.y into new location
+#
+
+my @cells;
+my $height = 0;
+my $width = 0;
+foreach my $row (@rows) {
+    my @c = split ',', $row;
+    $width = scalar @c if scalar @c > $width;
+    $cells[$height++] = [@c];
+}
+
+print " $width × $height \n";
+
+
+# can we specify an x,y pixel location to locate various graphics at?
+#
+# specify text, color, x,y pixel location, and +/-/0 shear?  what font?
+
+# rewrite .dat file using new images?
+
+# read mapcolors of suppliers (from _their_ datfiles) and use brighter
+# mapcolors in those color sequences
+
+# can we even compute passenger-class percentages based on goods characteristics?
+
+# something about industry fan-out balancing?
+
+# encourage High Street rows of stores?  using ___ like city row houses
+
+my $ii = Imager->new;
+$ii->read(file => $opts{i}) or die;
+# Example:
+# $ii->getwidth = 1024
+# $ii->getchannels = 3
+# $ii->bits = 8
+
+# Remove heritage transparent color for our possible later manipulation
+my $timg=Imager->new(xsize=>$ii->getwidth, ysize=>$ii->getheight, channels=>$ii->getchannels);
+$timg->box(filled=>1, color=>Imager::Color->new(231,255,255));
+
+my $orig_img=$timg->difference(other=>$ii);
+
+$orig_img->write(file=>'/tmp/1.png');
+
+my $paksize = $opts{p}; # 128;
+my $new_img = Imager->new(xsize => $width * $paksize, ysize => $height * $paksize, channels => 4);
+
+die "can't create image" unless $new_img;
+
+foreach my $r (0..$height-1) {
+    foreach my $c (0..$width-1) {
+        next if $cells[$r][$c] eq '-';
+        my ($src_y, $src_x) = split '\.', $cells[$r]->[$c];  # row.column format
+        $new_img->paste(left => $c * $paksize, top => $r * $paksize,
+                        src => $orig_img, src_minx => $src_x * $paksize, src_miny => $src_y * $paksize,
+                        width => $paksize, height => $paksize);
+    }
+}
+
+$new_img->write(file=>$opts{o});
+
+# TODO:
+#  - Combine multi-tile images into one
+#  - Break images like TileCutter?
+#  -
+
+1;
