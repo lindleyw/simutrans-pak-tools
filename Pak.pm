@@ -1,16 +1,12 @@
 package Pak;
 
-use Mojo::Base -base;
+use Mojo::Base -base, -signatures;
 use Mojo::Path;
 use List::Util;
 use File::Find;
 use File::Find::Rule;
 use File::Basename;
 use Path::ExpandTilde;
-
-use v5.20;
-use feature qw(signatures);
-no warnings qw(experimental::signatures);
 
 # An identifying name for the pak
 has 'name';
