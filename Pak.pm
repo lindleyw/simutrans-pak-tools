@@ -46,21 +46,22 @@ sub grep ($self, $cb) {
 
 has 'object_types' => sub ($self) { {}; };
 
-# This must be a path to a pak's root.
+has 'path';          # This must be a path to a pak's root.
+has 'dat_files';
 
-has 'path';
-
-has 'dat_files' => sub ($self) {
-    return [File::Find::Rule->file()->name('*.dat')->readable->in(expand_tilde($self->path))];
-};
+sub load ($self, $path = $self->path, $filespec = '*.dat') {
+    # Loads (or reloads) the pak's data files
+    return undef unless defined $path;
+    $self->dat_files( [File::Find::Rule->file()->name($filespec)->readable->in(expand_tilde($path))] );
+}
 
 has 'xlat_root' => sub ($self) {
+    # Location of the translation text files
     # Assumes the path has been set
-    my $xlat = Mojo::Path->new(expand_filename($self->path));
+    my $xlat = Mojo::Path->new(expand_tilde($self->path));
     push @$xlat, 'text';
     return $xlat->to_string;
 };
-
 
 # Find a list of all the language (translation) files for the pak
 
