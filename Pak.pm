@@ -6,7 +6,7 @@ use List::Util;
 use File::Find;
 use File::Find::Rule;
 use File::Basename;
-use File::Path::Expand;
+use Path::ExpandTilde;
 
 use v5.20;
 use feature qw(signatures);
@@ -55,7 +55,7 @@ has 'object_types' => sub ($self) { {}; };
 has 'path';
 
 has 'dat_files' => sub ($self) {
-    return [File::Find::Rule->file()->name('*.dat')->readable->in(expand_filename($self->path))];
+    return [File::Find::Rule->file()->name('*.dat')->readable->in(expand_tilde($self->path))];
 };
 
 has 'xlat_root' => sub ($self) {
