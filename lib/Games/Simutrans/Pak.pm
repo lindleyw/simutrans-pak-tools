@@ -183,7 +183,7 @@ sub save_object ($self, $obj) {
 # Parse a line of definition from a .dat file, and add it to our Pak object.
 # Builds a hash in a buffer. At eof, pass this 'obj=dummy' to flush the object being built.
 
-sub _object_definition_line ($self, $line) {
+sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
 
     if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<subscr>(?:\[|\]|\w|\s)+)\])?\s*=\s*(?<value>.*?)\s*\Z/) {
@@ -217,6 +217,7 @@ sub _object_definition_line ($self, $line) {
 		# Accumulate previous factory into database
 		if (defined $this_object{'name'}) {
 		    # print "------------------------\n";
+                    $this_object{_filename} = $fromfile;
 		    $self->save_object(\%this_object);
 		    %this_object = ();
 		}
@@ -239,10 +240,10 @@ sub read_dat ($self, $filename) {
     open ( my $fh, '<', $filename ) or die "Can't open $filename: $!";
     # print STDERR "** Processing $filename\n";
     while ( my $line = <$fh> ) {
-	$self->_object_definition_line($line);
+	$self->_object_definition_line($line, $filename);
     }
     close $fh;
-    $self->_object_definition_line('obj=dummy'); # flush trailing object. no 'name=x' so can't be saved.
+    $self->_object_definition_line('obj=dummy', $filename); # flush trailing object. no 'name=x' so can't be saved.
 }
 
 sub load ($self, $path = $self->path, $filespec = '*.dat') {
@@ -254,5 +255,37 @@ sub load ($self, $path = $self->path, $filespec = '*.dat') {
 	$self->read_dat($f);
     }
 }
+
+################
+# IMAGE FILES
+################
+
+# Note that the .dat files do not specify the tilesize.  Rather, that
+# is done in the makefiles by calling makeobj with the tilesize as a
+# parameter.  Furthermore, many paksets have multiple tilesizes, and
+# although many give the tilesize in a subdirectory or filename, there
+# is no regularity nor requirement to do so.
+#
+# However, we guess the tilesize by evaluating all the datfiles that
+# reference each image file, and then making the assumption that an
+# imagefile will be less than twice the maximum x,y tile reference to
+# it. Given that tiles are always square (32x32, 128x128) and that we
+# look at both x and y dimensions in this calculation (even if a
+# particular image has extra width or height, that is almost always in
+# one direction, not both, for otherwise 3/4 of the image would be
+# unused), this should result in a high success rate.
+
+
+
+
+
+
+# Evaluate a filename like "cityhall-1.2.3,-5,-7" to:
+#    png => cityhall-1
+#    x   => 2   xoffset => -5
+#    y   => 3   yoffset => -7
+
+
+
 
 1;
