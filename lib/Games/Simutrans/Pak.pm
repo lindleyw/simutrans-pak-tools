@@ -183,6 +183,8 @@ sub save_object ($self, $obj) {
 # Parse a line of definition from a .dat file, and add it to our Pak object.
 # Builds a hash in a buffer. At eof, pass this 'obj=dummy' to flush the object being built.
 
+use Data::DeepAccess qw(deep_exists deep_get deep_set);
+
 sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
 
@@ -197,21 +199,25 @@ sub _object_definition_line ($self, $line, $fromfile) {
 	    if (ref(\$this_object{$object}) eq 'SCALAR') {
 		undef $this_object{$object};
 	    }
-            if (defined $subscripts[2]) {
-                # NOTE that some keys (FrontImage, BackImage) have assumed number of axes,
+            if ($object =~ /^(front|back)image\z/) {
+                # NOTE: certain keys (FrontImage, BackImage) have multiple assumed axes,
                 # but not all values will give values for each; thus you may find two
                 # entries as:
                 #    FrontImage[1][0]    = value1
                 #    FrontImage[1][0][1] = value2
                 # where value1 is actually for FrontImage[1][0][0][0][0][0], with all the
-                # unstated axes defaulting to zero.  We must handle this and not overwrite
-                # previous or later values.
-                $this_object{$object}{lc(join(',',@subscripts))} = $value;
-	    } elsif (defined $subscripts[1]) {
-		$this_object{$object}{lc($subscripts[0])}{lc($subscripts[1])} = $value;
-	    } else {
-		$this_object{$object}{lc($subscripts[0])} = $value;
-	    }
+                # unstated axes defaulting to zero.
+                @subscripts = map { $_ // 0 } @subscripts[0..5]; # Convert to six-dimensional with '0' defaults
+            } elsif ($object =~ /^(empty|freight)image\z/) {
+                @subscripts = map { $_ // 0 } @subscripts[0..1]; # Default to good[0]
+            }
+            if ($object =~ /image\z/) {
+                if ($value =~ /^(?<imagefile>.+)\.(?<x>\d+)\.(?<y>\d+)(?:,(?<xoff>\d+),(?<yoff>\d+))?/) {
+                    $value = { map { $_ => $+{$_} } qw(imagefile x y xoff yoff) };
+                }
+            }
+            # for Data::DeepAccess … Thanks mst and Grinnz on irc.perl.org #perl 2020-06-18
+            deep_set(\%this_object, $object, @subscripts, $value);
 	} else {
 	    if (lc($object) eq 'obj') {
 		# Accumulate previous factory into database
