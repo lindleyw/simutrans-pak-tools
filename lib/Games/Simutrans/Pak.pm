@@ -189,18 +189,19 @@ use Mojo::File;
 sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
 
-    if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<subscr>(?:\[|\]|\w|\s)+)\])?\s*=\s*(?<value>.*?)\s*\Z/) {
+    if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<subscr>(?:\[|\]|\w|\s)+)\])?\s*=>?\s*(?<value>.*?)\s*\Z/) {
         # /^\s*(?<object>\w+)\s*(?:\[(?<sub1>\w+)\](?:\[(?<sub2>\w+)\])?)?\s*=\s*(?<value>.*?)\s*\Z/) {
 	my ($object, $value) = @+{qw(object value)};
         $object = lc($object);
         my @subscripts;
         @subscripts = split /[\[\]]+/, $+{subscr} if defined $+{subscr};
-	if (scalar @subscripts) {
+	if (scalar @subscripts || $object =~ /^(?:cursor|icon)\z/) {
 	    # NOTE: Values with subscripts, as "value[0]=50", will clobber a previous "value=50".
 	    if (ref(\$this_object{$object}) eq 'SCALAR') {
 		undef $this_object{$object};
 	    }
-            if ($object =~ /^(front|back)image\z/) {
+            my $is_image = 0;
+            if ($object =~ /^(front|back)?(image|diagonal)(up2?)?\z/) {
                 # NOTE: certain keys (FrontImage, BackImage) have multiple assumed axes,
                 # but not all values will give values for each; thus you may find two
                 # entries as:
@@ -208,14 +209,27 @@ sub _object_definition_line ($self, $line, $fromfile) {
                 #    FrontImage[1][0][1] = value2
                 # where value1 is actually for FrontImage[1][0][0][0][0][0], with all the
                 # unstated axes defaulting to zero.
+                print STDERR "Object " . ($this_object{name} // '??') . " has " . scalar @subscripts . " (6 expected)\n" if scalar @subscripts > 6;
                 @subscripts = map { $_ // 0 } @subscripts[0..5]; # Convert to six-dimensional with '0' defaults
-            } elsif ($object =~ /^(empty|freight)image\z/) {
-                @subscripts = map { $_ // 0 } @subscripts[0..1]; # Default to good[0]
+                $is_image++;
+            } elsif ($object =~ /^((empty|freight)image|cursor|icon)\z/) {
+                print STDERR "Object " . ($this_object{name} // '??') . " has " . scalar @subscripts . " (3 expected)\n" if scalar @subscripts > 3;
+                @subscripts = map { $_ // 0 } @subscripts[0..2]; # Default to good[0] and livery[0]
+                $is_image++;
             }
-            if ($object =~ /image\z/) {
-                if ($value =~ /^(?<image>.+)\.(?<x>\d+)\.(?<y>\d+)(?:,(?<xoff>\d+),(?<yoff>\d+))?/) {
-                    $value = { map { $_ => $+{$_} } qw(image x y xoff yoff) };
+            if ($is_image) {
+                # Can begin as './something' but otherwise file cannot have dots within
+                if ($value =~ /^(?<image>\.?[^.]+)           
+                               (?:\.(?<y>\d+)
+                                   (?:\.(?<x>\d+))?
+                                   (?:,(?<xoff>\d+)
+                                       (?:,(?<yoff>\d+))?
+                                   )?
+                               )?/xa) {
+                    $value = { ( map { $_ => $+{$_} } qw(image xoff yoff) ),   # undef OK in these
+                               ( map { $_ => $+{$_} // 0 } qw( x y ) ) };      # these default to zero
                     $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png');
+                    $this_object{_hasimages}{$object}++;
                 }
             }
             # for Data::DeepAccess … Thanks mst and Grinnz on irc.perl.org #perl 2020-06-18
@@ -236,7 +250,73 @@ sub _object_definition_line ($self, $line, $fromfile) {
 }
 
 ################
+#
+# 
+#
+################
+
+has 'imagefiles' => sub { {} };
+
+sub _image_level ($self, $object, $level, $hash) {
+    if ($level == 0) {
+        if (ref $hash ne 'HASH') {
+            $DB::single = 1;
+            print STDERR "aaagh in $object\n";
+            return;
+        }
+        if (defined $hash->{imagefile}) {
+            if (!defined $self->imagefiles->{$hash->{imagefile}}) {
+                $self->imagefiles->{$hash->{imagefile}} = {xmax => $hash->{x} // 0, ymax => $hash->{y} // 0};
+            } else {
+                if (!defined $hash->{x} || !defined $hash->{y}) {
+                    $DB::single = 1;
+                    print STDERR "no coordinate?";
+                }
+                $self->imagefiles->{$hash->{imagefile}}->{xmax} = $hash->{x} if $hash->{x} > $self->imagefiles->{$hash->{imagefile}}->{xmax};
+                $self->imagefiles->{$hash->{imagefile}}->{ymax} = $hash->{y} if $hash->{y} > $self->imagefiles->{$hash->{imagefile}}->{ymax};
+            }
+        }
+        # $DB::single = 1;
+        # print "Image file found: " . $hash->{imagefile} . "\n" ;
+    } elsif (ref $hash eq 'HASH') {
+        foreach my $k (keys %{$hash}) {
+            $self->_image_level($object, $level - 1, $hash->{$k}) if defined $hash->{$k};
+        }
+    }
+}
+
+
+sub find_all_images ($self) {
+    
+    my $has_images = $self->grep( sub {defined $_[1]->{_hasimages}} );
+    foreach my $ii (keys %{$has_images}) {
+        my $o = $self->object($ii);
+        my @imagekeys = keys %{$o->{_hasimages}};
+        foreach my $imagetype (@imagekeys) {
+            my @images;
+            if ($imagetype =~ /^(freight|empty)/) {
+                # {rotation}{good_index} where direction as 'E', 'NE' etc
+                # @images = @{
+                $self->_image_level($ii, 3, $o->{$imagetype});
+            } elsif ($imagetype =~ /^(front|back)/) {
+                # {rotation}{north-south}{east-west}{height}{animation_frame}{season} where rotation = 0..15
+                $self->_image_level($ii, 6, $o->{$imagetype});
+            } else {
+            }
+        }
+    }
+}
+
+
+
+
+
+
+
+################
+#
 # OBJECT DATA (.dat) FILES
+#
 ################
 
 has 'dat_files';
