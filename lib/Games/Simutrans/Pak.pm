@@ -184,6 +184,7 @@ sub save_object ($self, $obj) {
 # Builds a hash in a buffer. At eof, pass this 'obj=dummy' to flush the object being built.
 
 use Data::DeepAccess qw(deep_exists deep_get deep_set);
+use Mojo::File;
 
 sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
@@ -212,8 +213,9 @@ sub _object_definition_line ($self, $line, $fromfile) {
                 @subscripts = map { $_ // 0 } @subscripts[0..1]; # Default to good[0]
             }
             if ($object =~ /image\z/) {
-                if ($value =~ /^(?<imagefile>.+)\.(?<x>\d+)\.(?<y>\d+)(?:,(?<xoff>\d+),(?<yoff>\d+))?/) {
-                    $value = { map { $_ => $+{$_} } qw(imagefile x y xoff yoff) };
+                if ($value =~ /^(?<image>.+)\.(?<x>\d+)\.(?<y>\d+)(?:,(?<xoff>\d+),(?<yoff>\d+))?/) {
+                    $value = { map { $_ => $+{$_} } qw(image x y xoff yoff) };
+                    $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png');
                 }
             }
             # for Data::DeepAccess … Thanks mst and Grinnz on irc.perl.org #perl 2020-06-18
