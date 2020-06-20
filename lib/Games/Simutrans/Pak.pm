@@ -227,6 +227,10 @@ sub _object_definition_line ($self, $line, $fromfile) {
                                )?/xa) {
                     $value = { ( map { $_ => $+{$_} } qw(image xoff yoff) ),   # undef OK in these
                                ( map { $_ => $+{$_} // 0 } qw( x y ) ) };      # these default to zero
+                    # Override above in case of older "imagefile.3" form, which assumes column (x) only
+                    if (!defined $+{x} && $object =~ /^(front|back|empty|freight)/) {  # 
+                        $value->{x} = $+{y} // 0; $value->{y} = 0;
+                    }
                     $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png') unless $value->{image} eq '-';
                     $this_object{_hasimages}{$object}++;
                 }
@@ -323,17 +327,20 @@ sub find_image_tile_sizes ($self) {
                 my @guess_tile_size = (
                     ($image->getwidth() / ($self->imagefiles->{$ii}{xmax} + 1)) & ~31,
                     ($image->getheight() / ($self->imagefiles->{$ii}{ymax} + 1)) & ~31 );
-                if ($guess_tile_size[0] != $guess_tile_size[1]) {
-                    print STDERR '   ' . $guess_tile_size[0].'x'.$guess_tile_size[1].' ?? in '.$ii."\n";
-                    # It's almost certainly the smaller of the two.
-                    # Guard against picking zero here?
-                }
+                # It's almost certainly the smaller of the two.
+
+                # if ($guess_tile_size[0] != $guess_tile_size[1]) {
+                #     # Guard against picking zero here?
+                #     $DB::single = 1 if ($guess_tile_size[0] == 0 || $guess_tile_size[1] == 0);
+                #     print STDERR '   ' . $guess_tile_size[0].'x'.$guess_tile_size[1].' ?? in '.$ii."\n";
+                # }
+
+                my $tile_size = $guess_tile_size[0];
+                $tile_size = $guess_tile_size[1] if $tile_size > $guess_tile_size[1]; # Choose smaller
+                $self->imagefiles->{$ii}{tilesize} = $tile_size;
             }
         }
-        # Eventually for each object we will do:
-        # $self->object($ii, 'tile_size', [$x, $y]);
     }
-
 }
 
 ################
