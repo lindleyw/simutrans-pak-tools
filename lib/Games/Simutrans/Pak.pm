@@ -146,23 +146,22 @@ has 'object_types' => sub ($self) { {}; };
 sub save_object ($self, $obj) {
 
     if (! $obj->{intro_year} && ! $obj->{retire_year}) {
-	$obj->{synthetic} = 1;	# we could do this,
-	return; 		# or we could just not even bother to save
+	$obj->{permanent} = 1;
+    } else {
+        $obj->{intro_year} ||= 1000;
+        $obj->{intro_month} ||= 1;
+        $obj->{retire_year} ||= 2999;
+        $obj->{retire_month} ||= 12;
+
+        # Permit second-level sorting for objects with equal introductory times
+        my $power = $obj->{'engine_type'};
+        $power = '~~~' if (!length($power)); # sort last
+
+        $obj->{'sort_key'} = sprintf("%4d.%02d %s %4d.%02d",
+                                     $obj->{'intro_year'}, $obj->{'intro_month'},
+                                     $power,
+                                     $obj->{'retire_year'}, $obj->{'retire_month'});
     }
-
-    $obj->{intro_year} ||= 1000;
-    $obj->{intro_month} ||= 1;
-    $obj->{retire_year} ||= 2999;
-    $obj->{retire_month} ||= 12;
-
-    # Permit second-level sorting for objects with equal introductory times
-    my $power = $obj->{'engine_type'};
-    $power = '~~~' if (!length($power)); # sort last
-
-    $obj->{'sort_key'} = sprintf("%4d.%02d %s %4d.%02d",
-				 $obj->{'intro_year'}, $obj->{'intro_month'},
-				 $power,
-				 $obj->{'retire_year'}, $obj->{'retire_month'});
 
     # Abbreviate loquacious names
     $obj->{'short_name'} = $obj->{'name'};
@@ -201,7 +200,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
 		undef $this_object{$object};
 	    }
             my $is_image = 0;
-            if ($object =~ /^(front|back)?(image|diagonal)(up2?)?\z/) {
+            if ($object =~ /^(front|back)?(image|diagonal|start|ramp|pillar)(up)?2?\z/) {
                 # NOTE: certain keys (FrontImage, BackImage) have multiple assumed axes,
                 # but not all values will give values for each; thus you may find two
                 # entries as:
@@ -228,7 +227,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
                                )?/xa) {
                     $value = { ( map { $_ => $+{$_} } qw(image xoff yoff) ),   # undef OK in these
                                ( map { $_ => $+{$_} // 0 } qw( x y ) ) };      # these default to zero
-                    $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png');
+                    $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png') unless $value->{image} eq '-';
                     $this_object{_hasimages}{$object}++;
                 }
             }
@@ -236,7 +235,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
             deep_set(\%this_object, $object, @subscripts, $value);
 	} else {
 	    if (lc($object) eq 'obj') {
-		# Accumulate previous factory into database
+		# Accumulate previous object
 		if (defined $this_object{'name'}) {
 		    # print "------------------------\n";
                     $this_object{_filename} = $fromfile;
@@ -251,7 +250,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
 
 ################
 #
-# 
+# Pakset-wide image collection
 #
 ################
 
@@ -269,22 +268,18 @@ sub _image_level ($self, $object, $level, $hash) {
                 $self->imagefiles->{$hash->{imagefile}} = {xmax => $hash->{x} // 0, ymax => $hash->{y} // 0};
             } else {
                 if (!defined $hash->{x} || !defined $hash->{y}) {
-                    $DB::single = 1;
-                    print STDERR "no coordinate?";
+                    print STDERR "no coordinate for image in $object?\n";
                 }
                 $self->imagefiles->{$hash->{imagefile}}->{xmax} = $hash->{x} if $hash->{x} > $self->imagefiles->{$hash->{imagefile}}->{xmax};
                 $self->imagefiles->{$hash->{imagefile}}->{ymax} = $hash->{y} if $hash->{y} > $self->imagefiles->{$hash->{imagefile}}->{ymax};
             }
         }
-        # $DB::single = 1;
-        # print "Image file found: " . $hash->{imagefile} . "\n" ;
     } elsif (ref $hash eq 'HASH') {
         foreach my $k (keys %{$hash}) {
             $self->_image_level($object, $level - 1, $hash->{$k}) if defined $hash->{$k};
         }
     }
 }
-
 
 sub find_all_images ($self) {
     
@@ -294,24 +289,52 @@ sub find_all_images ($self) {
         my @imagekeys = keys %{$o->{_hasimages}};
         foreach my $imagetype (@imagekeys) {
             my @images;
-            if ($imagetype =~ /^(freight|empty)/) {
+            if ($imagetype =~ /^(?:freight|empty|cursor|icon)/) {
                 # {rotation}{good_index} where direction as 'E', 'NE' etc
-                # @images = @{
                 $self->_image_level($ii, 3, $o->{$imagetype});
-            } elsif ($imagetype =~ /^(front|back)/) {
+            } else {
+                # } elsif ($imagetype =~ /^(front|back)/) {   # Assume all others ahve 6 dimensional axes
                 # {rotation}{north-south}{east-west}{height}{animation_frame}{season} where rotation = 0..15
                 $self->_image_level($ii, 6, $o->{$imagetype});
-            } else {
             }
         }
     }
 }
 
+use Imager;
 
+sub find_image_tile_sizes ($self) {
 
+    # For each found image file,
+    # If the file exists, open it with Imager
+    # We know that Simutrans image objects always square, and always have a size a multiple of 32
+    # Some images may have extra graphical bits (explanatory text) to one side or the bottom,
+    # but we assume an image file will be more than one half used, so we can compute the
+    # tile size…
 
+    my $images = $self->imagefiles;
+    return unless defined $images;
+    foreach my $ii (keys %{$images}) {
+        my $image_stats = $self->imagefiles->{$ii};
+        unless (defined $image_stats->{size}) {
+            my $image = Imager->new();
+            if ($image->read(file => $ii)) {
+                $image_stats->{size} = [$image->getwidth(), $image->getheight()];
+                my @guess_tile_size = (
+                    ($image->getwidth() / ($self->imagefiles->{$ii}{xmax} + 1)) & ~31,
+                    ($image->getheight() / ($self->imagefiles->{$ii}{ymax} + 1)) & ~31 );
+                if ($guess_tile_size[0] != $guess_tile_size[1]) {
+                    print STDERR '   ' . $guess_tile_size[0].'x'.$guess_tile_size[1].' ?? in '.$ii."\n";
+                    # It's almost certainly the smaller of the two.
+                    # Guard against picking zero here?
+                }
+            }
+        }
+        # Eventually for each object we will do:
+        # $self->object($ii, 'tile_size', [$x, $y]);
+    }
 
-
+}
 
 ################
 #
