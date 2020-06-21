@@ -1,0 +1,17 @@
+
+
+################
+#
+# Returning source PNGs cropped for a single image
+#
+################
+
+# e.g., for an image with tilesize=128, to display the image at x=2,y=1 we would get:
+# <img src="file://PATH" style="object-fit: none; object-position: -256px -128px; width: 128px; height: 128px">
+#
+# The above does not perform the "legacy light-cyan to transparent background" transformation
+# Also file:// should be mapped to a Mojo or other web-server-mapped path to the file on this computer
+
+
+
+

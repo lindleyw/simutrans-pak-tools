@@ -139,6 +139,10 @@ sub grep ($self, $cb) {
 
 has 'object_types' => sub ($self) { {}; };
 
+sub objects_of_type ($self, $type) {
+    return $self->grep( sub {$_[1]->{obj} eq $type} )
+}
+
 # Various Simutrans-object filters before saving to our object
 
 # Instead, make this 'save_object' which filters and then saves in one.
@@ -353,6 +357,37 @@ sub find_image_tile_sizes ($self) {
             }
         }
     }
+}
+
+################
+#
+# Timeline
+#
+################
+
+sub timeline ($self, $type = undef) {
+    
+    my $objects;
+    if (defined $type) {
+        $objects = $self->objects_of_type($type);
+    } else {
+        $objects = $self->objects;
+    }
+
+    my $timeline;
+
+    my @periods = (qw(intro retire));
+    foreach my $obj_name (keys %{$objects}) {
+        next if $objects->{$obj_name}{permanent};
+        my $type = $objects->{$obj_name}{obj};
+        foreach my $period (0..1) {
+            # Value will be the opposite end of the availability period
+            $timeline->{$objects->{$obj_name}{$periods[$period]}}{$periods[$period]}{$type}{$objects->{$obj_name}{name}} =
+            $objects->{$obj_name}{$periods[1-$period]};
+        }
+    }
+
+    return $timeline;
 }
 
 ################
