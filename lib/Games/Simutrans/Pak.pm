@@ -384,6 +384,10 @@ sub load ($self, $path = $self->path, $filespec = '*.dat') {
     foreach my $f (@{$self->dat_files}) {
 	$self->read_dat($f);
     }
+
+    $self->find_all_images();
+    $self->find_image_tile_sizes();
+
 }
 
 
