@@ -1,3 +1,25 @@
+################
+#
+#
+################
+
+scan thru datfiles
+locate keyword "source_image" or similar?
+remap source image to destination image(s) given in front/back image...
+also remap colors using factory mapcolor ... new "mapcolor2" ?
+
+Can we compute mapcolor from goods specifications?
+Where are the goods colors given?
+Why does Passengers in 128.Britain have a mapcolor but no other goods do?
+
+See also:  https://forum.simutrans.com/index.php/topic,20006.msg188188.html#msg188188
+
+Shouldn't the raw materials (mines, farms) have a dark color of a given hue, with the factories having intermediate lightness levels, and consumers (stores) with the lightest tone of the given hue+saturation ?
+
+
+
+
+For that matter why is a symbol shown on the Minimap for Fishing Grounds but not other industries? Where does that symbol come from?
 
 
 ################

@@ -337,8 +337,12 @@ x y getp1 !pix
 @match rr @pred if
 @match gg @pgreen if
 @match bb @pblue if
-rgb
+@pix alpha
+rgba
 EOS
+
+    $constants->@{qw(from_red from_green from_blue from_alpha)}=$constants->{from_color}->rgba;
+    $constants->@{qw(rr gg bb aa)}=$constants->{to_color}->rgba;
 
     return Imager::transform2({ rpnexpr => $rpnexpr,
                                 constants => $constants,
@@ -388,9 +392,9 @@ x y getp1 !pix
 @pix hue !phue
 @pix value !pval
 
-@phue from_hue from_hue_thresh + lt @phue from_hue from_hue_thresh - gt and
-@pval from_value from_value_thresh + lt @pval from_value from_value_thresh - gt and
-@pix sat 0.20 gt
+@phue from_hue from_hue_thresh + le @phue from_hue from_hue_thresh - ge and
+@pval from_value from_value_thresh + le @pval from_value from_value_thresh - ge and
+@pix sat 0.15 gt @pix value 0.15 gt and
 and and
 rr gg bb rgb @pix if
 
@@ -422,9 +426,11 @@ EOS
         # $colortype should be 'std' or 'alt' for standard / alternate player color
         # $value should be 0..7 for the level
 
-        $opts->@{qw(rr gg bb aa)}=Imager::Color->new(web=> $opts->{to_color})->rgba;
-
-        return replace_rgb($img, {%{$opts}, to_color => $player_colors->{$colortype}->[$value]});
+        return replace_rgb($img, {%{$opts},
+                                  from_color => Imager::Color->new(web =>
+                                                                   $player_colors->{$colortype}->[$value]),
+                              },
+                       );
 
     }
 
@@ -436,7 +442,7 @@ sub change_to_player_colors {
     my $levels = 8;  # perhaps later, scalar ... of the array size
     my $level_offset = 0.1;                     # Do not modify values very near black
     my $v_threshold = (1-$level_offset)/($levels*2);            # for levels=2, this is 1/4
-    # print "THRESH: $v_threshold ";
+    # print "\nTHRESH: HUE=$hue_threshold, VALUE=$v_threshold ";
     foreach my $value ( 0 .. $levels - 1 ) {    # skipping 0 so black does not get modified!
         # Replace gradations of values of the given hue, with special player colors
         my $v = ($value * (1 - $level_offset) / $levels) + $level_offset + $v_threshold;  # for levels=2, this will be 1/4 and then 3/4.
@@ -454,7 +460,7 @@ sub change_to_player_colors {
 sub change_from_player_colors {
     # Replace a set of eight player colors to gradations of the given hue.
     # Replacement could be a hue or a mapcolor.
-    my ($img, $colortype, $hue, $mapcolor) = @_;
+    my ($img, $colortype, $hue, $mapcolor, $saturation) = @_;
     my @to_colors;
     if (defined $mapcolor) {
         # use mapcolor scale
@@ -465,8 +471,12 @@ sub change_from_player_colors {
     } else {
         # TODO:
         # calculate an array of output colors based on fixed hue and varying lightness/saturation ...(how exactly?)
+        $saturation //= 1;   # Saturation given as 0..1
+        for my $i (0..7) {
+            push @to_colors, Imager::Color->new( hue => $hue, s => $saturation , v => ($i+1) /  8 );
+        }
     }
-    for my $i (0..7) {
+    for my $i (0 .. scalar @to_colors - 1) {
         $img = change_from_player_color($img, $colortype, $i, { to_color => $to_colors[$i] } );
     }
     return $img;
@@ -496,7 +506,7 @@ my @changes = split(',',$ARGV[0]);
 
 foreach my $change (@changes) {
 
-    my ($from_hue, $from_hue_threshold, $to_hue, $force_sat) = $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(!\d*)?)?/i;
+    my ($from_hue, $from_hue_threshold, $to_hue, $force_sat) = $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(:\d*)?)?/i;
 
     $from_hue_threshold //= 10;
 
@@ -505,17 +515,21 @@ foreach my $change (@changes) {
         # print "  TO_HUE: map color $1\n";
         $map_color = $1;
         $to_hue = ($mapcolor[$map_color]->hsv)[0];
-        if ($force_sat =~ /^!\z/) {
-            $force_sat = '!' . ($mapcolor[$map_color]->hsv)[1]*255; # New saturation
+        if ($force_sat =~ /^:\z/) {
+            $force_sat = ':' . ($mapcolor[$map_color]->hsv)[1] * 100; # New saturation in percent
         }
     }
-    $force_sat = ($force_sat =~ /(\d+)/) ? $1 : undef; # Just the number, or undef
+    $force_sat = ($force_sat =~ /(\d+)/) ? ($1 / 100) : undef; # Saturation as percentage, or undef
+    if (defined $map_color && defined $force_sat) {
+        undef $map_color;  # Compute destination colors rather than using predefined values
+    }
 
     # In some cases previously we always replaced the saturation when replacing to a map color.
     # Now we seperately decide whether to do so.
 
     if ($from_hue =~ /^[a-z]/i) {
-        $oimg = change_from_player_colors($oimg, ($from_hue =~ /^a/i) ? 'alt': 'std', defined $map_color ? undef : $from_hue, $map_color);
+        print "($from_hue->$to_hue with saturation $force_sat) ";
+        $oimg = change_from_player_colors($oimg, ($from_hue =~ /^a/i) ? 'alt': 'std', defined $map_color ? undef : $to_hue, $map_color, $force_sat);
     } elsif ($to_hue eq 'p') {
         # print " change $from_hue to PLAYER color\n";
         $oimg = change_to_player_colors ($oimg, 'std', $from_hue, $from_hue_threshold);
@@ -524,7 +538,7 @@ foreach my $change (@changes) {
         $oimg = change_to_player_colors ($oimg, 'alt', $from_hue, $from_hue_threshold);
     } else {
         if (defined $force_sat) {
-            # print "($from_hue(±$from_hue_threshold)->$to_hue with saturation $force_sat) ";
+            print "($from_hue(±$from_hue_threshold)->$to_hue with saturation $force_sat) ";
             $oimg = replace_hue_sat($oimg, {
                 from_hue => $from_hue,
                 from_hue_thresh => $from_hue_threshold,
