@@ -34,9 +34,15 @@ paks) to other hues, or to player color gradients or alternate color
 gradients.
 
 The desired changes are specified as a single comma-separated list,
-without internal spaces.  Each component may be of the forms:
+without internal spaces.  Each component specifies a source color
+range, a dash, and a destination (output) color range.  Components are
+of this form:
 
-    [HUE][+TOLERANCE]-[NEW_HUE|m MAPCOLOR|p|a]
+    [HUE|p|a][+TOLERANCE]-[NEW_HUE|m MAPCOLOR|p|a][:FORCE_SATURATION]
+
+where only the hue and new_hue are required. Tolerance defaults to 10.
+The forced saturation is ignored when the output is set to player or
+alternate gradients.
 
 The following switches are available:
 
@@ -47,6 +53,8 @@ The following switches are available:
     -y <crop single y offset>
     -M   lists the hues of all (bright) mapcolors [7, 15, etc.]
          and exits
+    -v   Verbose. Primarily prints an explanation of how the
+         components in the change-list were parsed.
 
 Example:
 
@@ -66,6 +74,20 @@ which would change:
 * Player color gradation to correspond to range containing mapcolor 70 (i.e., 64..71) and
 
 * Alternate player-color gradation to mapcolor 25 (i.e., 24..31).
+
+When converting to player or alternate gradients, an offset level may
+be specified.  A component thus would have the form:
+
+    [HUE][+TOLERANCE]-[p|a][L offset_level]
+
+For example,
+
+    ./alter_hue -i INFILE -o OUTFILE 188+5pL30
+
+
+would convert hue 188, with tolerance of 5, to player gradient, using an
+offset level of 30.  This would have the effect of darkening the output
+by about 20% compared to the standard transformation.
 
 Note that Hue is specified in the HSV system. If your modifications
 seemingly have no effect, please verify that your graphic editing

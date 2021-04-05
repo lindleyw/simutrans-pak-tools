@@ -15,7 +15,8 @@ my %opts;
 # -x <crop single X offset>
 # -y <crop single y offset>
 # -M    list the hues of all (bright) mapcolors [7, 15, etc.]
-getopts('i:o:p:x:y:M',\%opts);
+# -v    verbose
+getopts('i:o:p:x:y:Mv',\%opts);
 
 my @mapcolor_rgb = (   # from simgraph16.cc
 	36, 75, 103,
@@ -424,10 +425,10 @@ EOS
 }
 
 sub change_to_player_colors {
-    my ($img, $colortype, $hue, $hue_threshold) = @_;
+    my ($img, $colortype, $hue, $hue_threshold, $level_offset) = @_;
 
     my $levels = 8;  # perhaps later, scalar ... of the array size
-    my $level_offset = 0.1;                     # Do not modify values very near black
+    $level_offset //= 0.1;                     # By default, do not modify values very near black
     my $v_threshold = (1-$level_offset)/($levels*2);            # for levels=2, this is 1/4
     # print "\nTHRESH: HUE=$hue_threshold, VALUE=$v_threshold ";
     foreach my $value ( 0 .. $levels - 1 ) {    # skipping 0 so black does not get modified!
@@ -493,13 +494,14 @@ my @changes = split(',',$ARGV[0]);
 
 foreach my $change (@changes) {
 
-    my ($from_hue, $from_hue_threshold, $to_hue, $force_sat) = $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(:\d*)?)?/i;
+    my ($from_hue, $from_hue_threshold, $to_hue, $force_sat, $level_offset) =
+    $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(:\d*)?(?:L([0-9.]*))?)?/i;
 
     $from_hue_threshold //= 10;
 
     my $map_color;
     if ($to_hue =~ /m(\d+)/) {
-        # print "  TO_HUE: map color $1\n";
+        print "  TO_HUE: map color $1\n" if $opts{v};
         $map_color = $1;
         $to_hue = ($mapcolor[$map_color]->hsv)[0];
         if ($force_sat =~ /^:\z/) {
@@ -507,6 +509,7 @@ foreach my $change (@changes) {
         }
     }
     $force_sat = ($force_sat =~ /(\d+)/) ? ($1 / 100) : undef; # Saturation as percentage, or undef
+    $level_offset = ($level_offset =~ /(\d+)/) ? ($1 / 100) : undef; # Level offset likewise
     if (defined $map_color && defined $force_sat) {
         undef $map_color;  # Compute destination colors rather than using predefined values
     }
@@ -515,17 +518,19 @@ foreach my $change (@changes) {
     # Now we seperately decide whether to do so.
 
     if ($from_hue =~ /^[a-z]/i) {
-        print "($from_hue->$to_hue with saturation $force_sat) ";
+        print "($from_hue->$to_hue with saturation $force_sat)\n" if $opts{v};
         $oimg = change_from_player_colors($oimg, ($from_hue =~ /^a/i) ? 'alt': 'std', defined $map_color ? undef : $to_hue, $map_color, $force_sat);
     } elsif ($to_hue eq 'p') {
-        # print " change $from_hue to PLAYER color\n";
-        $oimg = change_to_player_colors ($oimg, 'std', $from_hue, $from_hue_threshold);
+        print " change $from_hue(±$from_hue_threshold) to PLAYER color\n" if $opts{v};
+        print ' (with offset level ' . $level_offset*100 ."%)\n" if ($opts{v} && defined $level_offset);
+        $oimg = change_to_player_colors ($oimg, 'std', $from_hue, $from_hue_threshold, $level_offset);
     } elsif ($to_hue eq 'a') {
-        # print " change $from_hue to ALTERNATE color\n";
-        $oimg = change_to_player_colors ($oimg, 'alt', $from_hue, $from_hue_threshold);
+        print " change $from_hue(±$from_hue_threshold) to ALTERNATE color\n" if $opts{v};
+        print ' (with offset level ' . $level_offset*100 ."%)\n" if ($opts{v} && defined $level_offset);
+        $oimg = change_to_player_colors ($oimg, 'alt', $from_hue, $from_hue_threshold, $level_offset);
     } else {
         if (defined $force_sat) {
-            print "($from_hue(±$from_hue_threshold)->$to_hue with saturation $force_sat) ";
+            print "($from_hue(±$from_hue_threshold)->$to_hue with saturation $force_sat)\n" if $opts{v};
             $oimg = replace_hue_sat($oimg, {
                 from_hue => $from_hue,
                 from_hue_thresh => $from_hue_threshold,
@@ -533,7 +538,7 @@ foreach my $change (@changes) {
                 new_sat => $force_sat,
             });
         } else {
-            # print "($from_hue(±$from_hue_threshold)->$to_hue) ";
+            print "($from_hue(±$from_hue_threshold)->$to_hue)\n" if $opts{v};
             $oimg = replace_hue($oimg, {
                 from_hue => $from_hue,
                 from_hue_thresh => $from_hue_threshold,
