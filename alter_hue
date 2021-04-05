@@ -11,24 +11,11 @@ my %opts;
 
 # -i <input file>
 # -o <output file>
-### -s <saturation>
-### -S <saturation threshold>
 # -p <paksize>
 # -x <crop single X offset>
 # -y <crop single y offset>
-# -P <hue[,threshold]>    replace hue with player color
-# -A <hue[,threshold]>   replace with alternate player color
 # -M    list the hues of all (bright) mapcolors [7, 15, etc.]
-getopts('i:o:H:n:p:x:y:M',\%opts);
-# perhaps later, s:S:
-
-#### FORMERLY
-#### getopts... H:h:m:
-# -H <hue threshold>
-#### -h <hue> or -h <hue>,<hue>,...
-####       any hue can be e.g., 'm3' for mapcolor 3
-#### -m <mapcolor>
-
+getopts('i:o:p:x:y:M',\%opts);
 
 my @mapcolor_rgb = (   # from simgraph16.cc
 	36, 75, 103,
