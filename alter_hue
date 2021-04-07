@@ -7,6 +7,8 @@ use Getopt::Std;
 
 use Imager;
 
+our $VERSION = "0.17";
+
 my %opts;
 
 # -i <input file>
@@ -495,7 +497,7 @@ my @changes = split(',',$ARGV[0]);
 foreach my $change (@changes) {
 
     my ($from_hue, $from_hue_threshold, $to_hue, $force_sat, $level_offset) =
-    $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(:\d*)?(?:L([0-9.]*))?)?/i;
+    $change =~ /(\d+|p|a)(?:\+(\d+))?(?:\-(p|a|m?\d+)(:\d*)?(?:L([+\-]?[0-9.]*))?)?/i;
 
     $from_hue_threshold //= 10;
 
@@ -509,7 +511,7 @@ foreach my $change (@changes) {
         }
     }
     $force_sat = ($force_sat =~ /(\d+)/) ? ($1 / 100) : undef; # Saturation as percentage, or undef
-    $level_offset = ($level_offset =~ /(\d+)/) ? ($1 / 100) : undef; # Level offset likewise
+    $level_offset = ($level_offset =~ /(-?\d+)/) ? ($1 / 100) : undef; # Level offset likewise
     if (defined $map_color && defined $force_sat) {
         undef $map_color;  # Compute destination colors rather than using predefined values
     }
