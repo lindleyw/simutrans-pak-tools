@@ -1,6 +1,6 @@
 use lib 'lib';
 use Games::Simutrans::Pak;
-$p=Pak->new;
+$p=Games::Simutrans::Pak->new;
 $p->path('~/Documents/games/simutrans/simutrans-pak128.britain');
 $p->load;
 # $p->find_all_images;

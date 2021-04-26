@@ -1,12 +1,11 @@
-package Pak;
+package Games::Simutrans::Pak;
 
 use Mojo::Base -base, -signatures;
 use Mojo::Path;
+use Mojo::File;
 use List::Util;
-use File::Find;
-use File::Find::Rule;
-use File::Basename;
 use Path::ExpandTilde;
+use Data::DeepAccess qw(deep_exists deep_get deep_set);
 
 # An identifying name for the pak
 has 'name';
@@ -43,11 +42,17 @@ has 'xlat_root' => sub ($self) {
 
 # Find a list of all the language (translation) files for the pak
 
+# use File::Find;
+# use File::Find::Rule;
+# use File::Basename;
+
 has 'languages' => sub ($self) {
     # Return a list of available languages
 
-    my @files_list = File::Find::Rule->file()->name('*.tab')->readable->in($self->xlat_root);
-    my @languages = map { (fileparse($_))[0] =~ m/^(.+)\./; $1; } @files_list;
+    my $files_collection = Mojo::File->new($self->xlat_root)->list_tree->grep(sub{$_ =~ /\.tab\z/});
+    my @languages = $files_collection->map(sub { (fileparse($_))[0] =~ m/^(.+)\./; $1; } );
+    # my @files_list = File::Find::Rule->file()->name('*.tab')->readable->in($self->xlat_root);
+    # my @languages = map { (fileparse($_))[0] =~ m/^(.+)\./; $1; } @files_list;
 
     return [@languages];
 
@@ -186,9 +191,6 @@ sub save_object ($self, $obj) {
 # Parse a line of definition from a .dat file, and add it to our Pak object.
 # Builds a hash in a buffer. At eof, pass this 'obj=dummy' to flush the object being built.
 
-use Data::DeepAccess qw(deep_exists deep_get deep_set);
-use Mojo::File;
-
 sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
 
@@ -301,7 +303,7 @@ sub find_all_images ($self) {
                 # {rotation}{good_index} where direction as 'E', 'NE' etc
                 $self->_image_level($ii, 3, $o->{$imagetype});
             } else {
-                # } elsif ($imagetype =~ /^(front|back)/) {   # Assume all others ahve 6 dimensional axes
+                # } elsif ($imagetype =~ /^(front|back)/) {   # Assume all others have 6 dimensional axes
                 # {rotation}{north-south}{east-west}{height}{animation_frame}{season} where rotation = 0..15
                 $self->_image_level($ii, 6, $o->{$imagetype});
             }
@@ -330,7 +332,7 @@ sub find_all_images ($self) {
 
 use Imager;
 
-sub find_image_tile_sizes ($self) {
+sub find_image_tile_size ($self, $file, $params = {}) {
 
     # For each found image file,
     # If the file exists, open it with Imager
@@ -338,24 +340,42 @@ sub find_image_tile_sizes ($self) {
     # Some images may have extra graphical bits (explanatory text) to one side or the bottom,
     # but we assume an image file will be more than one half used, so we can compute the
     # tile size…
+    # This must be done for each image individually, as many paksets have icons, hull/hold
+    # images, and others of varying sizes. A 128 pakset might have airplanes or ships at
+    # 256 size and icons at 64 or 32 size.
+
+    my $images = $self->imagefiles;
+    return unless defined $images;
+
+    my $image_stats = $self->imagefiles->{$file};
+    # Skip files whose sizes we cannot guess
+    return unless ($self->imagefiles->{$file}{xmax} && $self->imagefiles->{$file}{ymax});
+    unless (defined $image_stats->{tilesize}) {
+        my $image = $self->imagefiles->{$file}{image} // Imager->new();
+        # NOTE: Older Simutrans PNG are afflicted with 'pHYs out of place' errors,
+        # which may be safely ignored, thus the flag below.
+        $image->read(file => $file, png_ignore_benign_errors => 1) unless ($image->getwidth());
+        if ($image->getwidth()) {
+            $image_stats->{size} = [$image->getwidth(), $image->getheight()];
+            my @guess_tile_size = (
+                ($image->getwidth() / ($self->imagefiles->{$file}{xmax} + 1)) & ~31,
+                ($image->getheight() / ($self->imagefiles->{$file}{ymax} + 1)) & ~31 );
+            # It's almost certainly the smaller of the two.
+            my $tile_size = $guess_tile_size[0];
+            $tile_size = $guess_tile_size[1] if $tile_size > $guess_tile_size[1]; # Choose smaller
+            $self->imagefiles->{$file}{tilesize} = $tile_size;
+            $self->imagefiles->{$file}{image} //= $image if $params->{save};
+        }
+    }
+    
+}
+
+sub find_image_tile_sizes ($self, $params = {}) {
 
     my $images = $self->imagefiles;
     return unless defined $images;
     foreach my $ii (keys %{$images}) {
-        my $image_stats = $self->imagefiles->{$ii};
-        unless (defined $image_stats->{size}) {
-            my $image = Imager->new();
-            if ($image->read(file => $ii)) {
-                $image_stats->{size} = [$image->getwidth(), $image->getheight()];
-                my @guess_tile_size = (
-                    ($image->getwidth() / ($self->imagefiles->{$ii}{xmax} + 1)) & ~31,
-                    ($image->getheight() / ($self->imagefiles->{$ii}{ymax} + 1)) & ~31 );
-                # It's almost certainly the smaller of the two.
-                my $tile_size = $guess_tile_size[0];
-                $tile_size = $guess_tile_size[1] if $tile_size > $guess_tile_size[1]; # Choose smaller
-                $self->imagefiles->{$ii}{tilesize} = $tile_size;
-            }
-        }
+        $self->find_image_tile_size( $ii, $params );
     }
 }
 
@@ -411,23 +431,20 @@ sub read_dat ($self, $filename) {
     $self->_object_definition_line('obj=dummy', $filename); # flush trailing object. no 'name=x' so can't be saved.
 }
 
-sub load ($self, $path = $self->path, $filespec = '*.dat') {
+sub load ($self, $path = $self->path) {
     # Loads (or reloads) the pak's data files
     return undef unless defined $path;
-    $self->dat_files( [File::Find::Rule->file()->name($filespec)->readable->in($path)] );
 
-    foreach my $f (@{$self->dat_files}) {
-	$self->read_dat($f);
-    }
+    my $file_path = Mojo::File->new($path);
+    $self->dat_files( $file_path->list_tree->grep(sub{/\.dat\z/i}) );
+
+    $self->dat_files->each ( sub {
+	$self->read_dat($_);
+    });
 
     $self->find_all_images();
     $self->find_image_tile_sizes();
 
 }
-
-
-
-
-
 
 1;
