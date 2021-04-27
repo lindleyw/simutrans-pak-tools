@@ -265,13 +265,17 @@ sub mapcolor ($index) {
 
 ################
 # COLOR PIXEL MANIPULATION
-# These return Imager objects
+# 
+# These 'replace_' functions return Imager objects, as opposed to
+# modifying the object's image.
+#
+# They all use Imager::transform2 (see Imager::Engines manpage) and
+# are inspired by a little program by Tony Cook (tonyc),
+# http://www.perlmonks.org/?node_id=497355
 ################
 
 sub replace_rgb ($self, $constants) {
     # Replace one (r,g,b) with another
-    # Inspired by little program by Tony Cook (tonyc),
-    # http://www.perlmonks.org/?node_id=497355
 
     my $rpnexpr = <<'EOS';
 x y getp1 !pix
@@ -344,7 +348,6 @@ rr gg bb rgb @pix if
 
 EOS
 
-    # $constants->@{qw(rr gg bb aa)}=Imager::Color->new(web=>$constants->{to_color})->rgba;
     $constants->@{qw(rr gg bb aa)} = $constants->{to_color}->rgba;
 
     return Imager::transform2({ rpnexpr => $rpnexpr,
@@ -354,8 +357,8 @@ EOS
 }
 
 ################
-# Replace to/from a single player/alternate color
-# These modify the object's image
+# Change an object's image to/from a single player/alternate color.
+# These modify the object's image (unlike the above 'replace_' subs)
 ################
 
 sub change_to_player_color ($self, $colortype, $value, $opts) {
@@ -377,7 +380,7 @@ sub change_from_player_color ($self, $colortype, $value, $opts) {
 }
 
 ################
-# Replace a color range to/from player/alternate colors
+# Change a color range to/from player/alternate colors
 ################
 
 sub change_to_player_colors ($self, $opts = {}) {
@@ -389,17 +392,15 @@ sub change_to_player_colors ($self, $opts = {}) {
           $opts->{hue},
           $opts->{hue_threshold} // $opts->{hue_thresh} // $opts->{hue_t},
           $opts->{levels} // 8,  # Normally, use all eight player/alternate colors
-          $opts->{offset} // 0,
+          $opts->{offset} // 0,  # NOTE: offset+level must be ≤ 8 
           $opts->{level_offset} // $opts->{level_o} // 0.1, # By default, do not modify values very near black
           # NOTE: Could also introduce a gamma parameter
       );
 
     my $v_threshold = (1-$level_offset)/($levels*2);            # for levels=2, this is 1/4
-    # print "\nTHRESH: HUE=$hue_threshold, VALUE=$v_threshold ";
-    foreach my $value ( $offset .. $levels - 1 ) {    # skipping 0 so black does not get modified!
+    foreach my $value ( $offset .. ($offset + $levels) - 1 ) {    # skipping 0 so black does not get modified!
         # Replace gradations of values of the given hue, with special player colors
         my $v = ($value * (1 - $level_offset) / $levels) + $level_offset + $v_threshold;  # for levels=2, this will be 1/4 and then 3/4.
-        # print "($v) ";
         $self->change_to_player_color($colortype, $value, {
             from_hue => $hue,
             from_hue_thresh => $hue_threshold,
@@ -414,29 +415,33 @@ sub change_from_player_colors ($self, $opts = {}) {
     # Replace a set of eight player colors to gradations of the given hue.
     # Replacement could be a hue or a mapcolor.
     my ($colortype,
-        $hue, $mapcolor, $saturation) =
+        $hue, $saturation, $offset, $levels,
+        $mapcolor) =
         ( $opts->{type} // $opts->{colortype} ,
           $opts->{hue},
-          $opts->{map} // $opts->{mapcolor},
           $opts->{sat} // $opts->{saturation},
+          $opts->{offset} // 0,
+          $opts->{levels} // 8,
+          $opts->{map} // $opts->{mapcolor},
       );
     my @to_colors;
     if (defined $mapcolor) {
-        # use mapcolor scale
+        # change to a mapcolor scale
         my $start_mapcolor = $mapcolor & 0xf8; # mask off bottom 3 bits
-        for my $i (0..7) {
+        for my $i ( $offset .. ($offset + $levels) - 1) {
             push @to_colors, $_mapcolor[$start_mapcolor + $i];
         }
     } else {
-        # TODO:
-        # calculate an array of output colors based on fixed hue and varying lightness/saturation ...(how exactly?)
+        # TODO: calculate an array of output colors based on fixed hue
+        # and varying lightness/saturation ...(how to improve this
+        # basic algorithm?)
         $saturation //= 1;   # Saturation given as 0..1
-        for my $i (0..7) {
+        for my $i ( $offset .. ($offset + $levels) - 1 ) {
             push @to_colors, Imager::Color->new( hue => $hue, s => $saturation , v => ($i+1) /  8 );
         }
     }
-    for my $i (0 .. scalar @to_colors - 1) {
-        $self->change_from_player_color( $colortype, $i, { to_color => $to_colors[$i] } );
+    for my $i ( 0 .. scalar @to_colors - 1) {
+        $self->change_from_player_color( $colortype, $offset + $i, { to_color => $to_colors[$i] } );
     }
 
 }
@@ -551,6 +556,8 @@ sub make_transparent ($self) {
 }
 
 sub subimage ($self, $x, $y) {
+    # Once the tilesize of an image is known, we can slice a subimage
+    # from it, given its (x,y)
     return undef unless defined $x && defined $y && defined $self->image && defined $self->tilesize;
     return $self->image->copy->crop(left=>$x*$self->tilesize, top=>$y*$self->tilesize,width=>$self->tilesize,height=>$self->tilesize);
 }
