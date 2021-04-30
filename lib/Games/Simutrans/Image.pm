@@ -530,6 +530,7 @@ sub read ($self, $params = {}) {
 
         $self->image($image) if $params->{save};
     }
+    1;
 }
 
 sub write ($self, $filename) {
