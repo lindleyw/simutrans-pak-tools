@@ -267,6 +267,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
 has 'imagefiles' => sub { {} };
 
 sub _image_level ($self, $object, $level, $hash) {
+    # Drills down recursively, regardless of starting level, so complete proper structure exists
     if ($level == 0) {
         if (ref $hash ne 'HASH') {
             $DB::single = 1;

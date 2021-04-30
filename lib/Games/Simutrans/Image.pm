@@ -12,7 +12,11 @@ use Mojo::Base -base, -signatures;
 
 sub _player_colors ($type = 'std') {
     state $player_colors = {std => ['#244b67', '#395e7c', '#4c7191', '#6084a7', '#7497bd', '#88abd3', '#9cbee9', '#b0d2ff'],
-                            alt => ['#7b5803', '#8e6f04', '#a18605', '#b49d07', '#c6b408', '#d9cb0a', '#ece20b', '#fff90d']};
+                            alt => ['#7b5803', '#8e6f04', '#a18605', '#b49d07', '#c6b408', '#d9cb0a', '#ece20b', '#fff90d'],
+                            menu => ['#6b6b6b', '#9b9b9b', '#b3b3b3', '#c9c9c9', '#dfdfdf'],
+                            day => ['#7f9bf1', '#ffff53', '#ff211d', '#01dd01', '#4d4d4d', '#57656f', '#c1b1d1', '#e3e3ff', '#ff017f', '#0101ff'],
+                            night => ['#80c3d3', '#ffff53', '#ff211d', '#01dd01', '#d3c380', '#d3c380', '#d3c380', '#ffffe3', '#ff017f', '#0101ff'],
+                        };
     return $player_colors->{$type};
 }
 
@@ -265,7 +269,7 @@ sub mapcolor ($index) {
 
 ################
 # COLOR PIXEL MANIPULATION
-# 
+#
 # These 'replace_' functions return Imager objects, as opposed to
 # modifying the object's image.
 #
@@ -392,7 +396,7 @@ sub change_to_player_colors ($self, $opts = {}) {
           $opts->{hue},
           $opts->{hue_threshold} // $opts->{hue_thresh} // $opts->{hue_t},
           $opts->{levels} // 8,  # Normally, use all eight player/alternate colors
-          $opts->{offset} // 0,  # NOTE: offset+level must be ≤ 8 
+          $opts->{offset} // 0,  # NOTE: offset+level must be ≤ 8
           $opts->{level_offset} // $opts->{level_o} // 0.1, # By default, do not modify values very near black
           # NOTE: Could also introduce a gamma parameter
       );
@@ -419,7 +423,7 @@ sub change_from_player_colors ($self, $opts = {}) {
         $mapcolor) =
         ( $opts->{type} // $opts->{colortype} ,
           $opts->{hue},
-          $opts->{sat} // $opts->{saturation},
+          $opts->{sat} // $opts->{saturation} // 1,
           $opts->{offset} // 0,
           $opts->{levels} // 8,
           $opts->{map} // $opts->{mapcolor},
@@ -491,7 +495,7 @@ sub read ($self, $params = {}) {
 
     if ( (!defined $self->modified) || ( -M $file != $self->modified ) || ($params->{save}) ) {
         # Haven't read yet, or was modified
-        
+
         my $image = $self->image // Imager->new();
         # NOTE: Older Simutrans PNG are afflicted with 'pHYs out of place' errors,
         # which may be safely ignored, thus the flag below.
@@ -563,3 +567,316 @@ sub subimage ($self, $x, $y) {
 }
 
 1;
+
+__END__
+
+=encoding utf-8
+
+=head1 NAME
+
+Games::Simutrans::Image - An abstraction of a PNG file for Simutrans
+
+=head1 SYNOPSIS
+
+    use Games::Simutrans::Image;
+
+    my $image = Games::Simutrans::Image->new(file = '/tmp/example.png');
+    $image->read( { save => 1 } );
+
+=head1 DESCRIPTION
+
+This module uses colors as described in the L<Imager::Color>
+documentation. The values for C<hue>, C<saturation>, C<value>, and
+C<alpha> likewise.  If you are copying values from your favorite
+graphic editing program, be sure you are using the correct range
+values or you will notice confusing behavior.
+
+=head1 FUNCTIONS
+
+=head2 player_color ($type, $index)
+
+Returns either a primary (standard) player color (when type is 'std')
+or an alternate player color (when type is 'alt').  The index value
+should be 0..7.  The return value is an object of type
+L<Imager::Color>. For a complete description of player colors, see
+L<https://simutrans-germany.com/wiki/wiki/en_SpecialColors>.
+
+Additionally, the type 'menu' with index 0..4 is for menu grays; the
+types 'day' and 'night' with index 0..9 are the special day/night
+bright colors.
+
+=head2 mapcolor ($index)
+
+Returns a Simutrans map color, with index 0..223.  The return value is
+an object of type L<Imager::Color>.The special map colors are defined
+at
+L<https://simutrans-germany.com/wiki/wiki/en_GoodsDef#MapColor_Parameter>.
+
+
+
+=head1 ATTRIBUTES
+
+=head2 file
+
+Sets or returns the full pathname of the associated .PNG image file.
+Ordinarily set at or shortly after creating the object.
+
+=head2 image
+
+The L<Imager> object which represents the image itself.  This may be
+undef or may not exist if the 'read' method has not been used.
+
+=head2 modified
+
+The modification date/time of the .PNG image file, as retrieved Perl's
+-M file test operator.
+
+=head2 width
+
+The width of the image, in pixels.
+
+=head2 height
+
+The height of the image, in pixels.
+
+=head2 xmax, ymax
+
+The maximum subimage grid indices in the x and y dimensions, as
+accumulated by the 'record_grid_coordinate' method.
+
+=head2 tilesize
+
+The imputed tilesize dimension (e.g., 32, 64, 128, 192, 256) for this
+.PNG file; see 'record_grid_coordinate' below.
+
+=head2 is_transparent
+
+Nonzero if the .PNG image has been modified to have actual
+transparency or is believed to (by virtue of its lower-left pixel
+being transparent; because of Simutrans's graphic design, the far
+lower-left and lower-right triangular areas of any given subimage cell
+should be blank).  Legacy .PNG files for Simutrans used a special
+light-blue color (#e7ffff) in lieu of actual transparency.
+
+=head1 METHODS
+
+=head2 new ( file => '/path/to/file' )
+
+Creates a new C<Image> object.  Ordinarily, and optionally, only the
+C<file> attribute will be set.  The file itself is not read until the
+C<read> method is invoked.
+
+=head2 read ( $params )
+
+Actually reads the .PNG file.  The optional hash of parameters may include:
+
+=over 8
+
+=item save
+
+set to nonzero to retain the L<Imager> object for the image data
+
+=item file
+
+sets or overrides the C<file> attribute of the object
+
+=back
+
+Note that the file will not be re-read unless it has been modified on
+disk (see the C<modified> attribute) or unless the C<save> parameter
+is set.
+
+=head2 flush
+
+Frees the memory associated with the C<image> attribute by undefining
+any L<Imager> object.  Also undef's the 'modified' attribute.
+
+=head2 make_transparent
+
+Changes the image's legacy pseudo-transparent light-blue color into
+actual transparency.
+
+=head2 record_grid_coordinate ($x, $y)
+
+Makes a note that grid coordinate (x,y) was invoked by a .dat file in
+the current pakset.  Because the .dat files which refer to .png files
+in Simutrans definitions do not explicitly state the grid size (e.g.,
+32x32 or 128x128), it must be inferred by examining the entire pakset
+and making an educated guess based on the maximum grid coordinate
+requested after reading the entire pakset.
+
+The only other way to impute this information would be to attempt to
+interpret the pakset's make-files, a task which is beyond the scope of
+this Perl module.  Further comments exist in the C<Image.pm> source
+code which may shed additional light on the situation.
+
+=head2 subimage ($x, $y)
+
+Returns an L<Imager> object which is only the extracted cell
+(subimage) of the .PNG file, based on the 'tilesize' attribute.
+
+=head2 replace_rgb ($constants)
+
+This replaces each pixel of the given 'from' color to the 'to' color.
+B<NOTE:> The C<replace_> methods B<do not modify> the object's
+C<image> attribute. They all return an image object of type L<Imager>.
+
+The constants parameter is a hash reference with these keys:
+
+=over 8
+
+=item from_color
+
+An object of type L<Imager::Color>
+
+=item to_color
+
+An object of type L<Imager::Color>
+
+=back
+
+=head2 replace_hue ($constants)
+
+This replaces pixels which match the given hue.  The constants
+parameter is a hash reference with these keys:
+
+=over 8
+
+=item from_hue
+
+The hue of existing pixels to match
+
+=item from_hue_thresh
+
+A threshold, or range, plus or minus from C<from_hue>, to match. Use 0
+for only an exact hue match.
+
+=item new_hue
+
+The new hue to use.
+
+=back
+
+=head2 replace_hue_sat ($constants)
+
+As C<replace_hue> but with the additional constants parameter:
+
+=over 8
+
+=item new_sat
+
+The new saturation value to set
+
+=back
+
+=head2 replace_color_range ($constants)
+
+Replaces a range of colors, based on ranges of their hue and value,
+with constants being:
+
+=over 8
+
+=item from_hue, from_hue_thresh
+
+=item from_value, from_value_thresh
+
+The hue and value to match, with a threshold (range) for each.
+
+=item to_color
+
+The color with which the matched colors will be replaced.
+
+=back
+
+=head2 change_to_player_colors ($opts)
+
+Change a range of colors to player, or alternate player, colors.
+Options include the following (with alternate spellings for the
+options in parentheses):
+
+=over 8
+
+=item colortype (type)
+
+'std' for standard player colors, 'alt' for alternate.  The special
+color ranges 'menu' for Simutrans menu colors, 'day' and 'night' for
+the day/night colors may also be used.
+
+=item hue, hue_thresh
+
+The hue of the new colors to match, and the threshold (plus/minus) for
+matching.
+
+=item levels
+
+The number of different color levels to be created.  If not specified,
+defaults to 8 for standard player and alternate color sets.
+
+=item offset
+
+The first level of the color set to be created. Defaults to 0.
+
+=item level_offset
+
+An offset (as a fraction from -1..1) which will be added to the Value
+component for each level of the output colors
+
+=item
+
+=item
+
+=back
+
+=head2 change_to_player_colors ($opts)
+
+Change player, or alternate player, colors, to a range of new colors.
+Options include the following (with alternate spellings for the
+options in parentheses):
+
+=over 8
+
+=item colortype (type)
+
+As with C<change_from_player_colors>
+
+=item levels, offset, level_offset
+
+Affects the number of output colors, and their Value components,
+similar to C<change_from_player_colors>
+
+=item hue
+
+The single hue of the new colors to be created
+
+=item sat
+
+The saturation of the new colors to be created
+
+=item map
+
+Instead of specifying C<hue> and C<sat>, you may specify a Simutrans
+mini-map color (0..223).
+
+=back
+
+=head2 write ($filename)
+
+Writes the L<Imager> object to a file at a given path, returning the
+value from its write() method.
+
+=head1 AUTHOR
+
+William Lindley E<lt>wlindley@wlindley.comE<gt>
+
+=head1 COPYRIGHT
+
+Copyright 2021, William Lindley
+
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
+=head1 SEE ALSO
+
+L<Games::Simutrans::Pak>
