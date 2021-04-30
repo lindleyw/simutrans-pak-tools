@@ -580,7 +580,7 @@ Games::Simutrans::Image - An abstraction of a PNG file for Simutrans
 
     use Games::Simutrans::Image;
 
-    my $image = Games::Simutrans::Image->new(file = '/tmp/example.png');
+    my $image = Games::Simutrans::Image->new(file => '/tmp/example.png');
     $image->read( { save => 1 } );
 
 =head1 DESCRIPTION
