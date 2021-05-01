@@ -14,12 +14,16 @@ Why does Passengers in 128.Britain have a mapcolor but no other goods do?
 
 See also:  https://forum.simutrans.com/index.php/topic,20006.msg188188.html#msg188188
 
-Shouldn't the raw materials (mines, farms) have a dark color of a given hue, with the factories having intermediate lightness levels, and consumers (stores) with the lightest tone of the given hue+saturation ?
+Shouldn't the raw materials (mines, farms) have a dark color of a
+given hue, with the factories having intermediate lightness levels,
+and consumers (stores) with the lightest tone of the given
+hue+saturation ?
 
 
 
 
-For that matter why is a symbol shown on the Minimap for Fishing Grounds but not other industries? Where does that symbol come from?
+For that matter why is a symbol shown on the Minimap for Fishing
+Grounds but not other industries? Where does that symbol come from?
 
 
 ################
@@ -28,12 +32,36 @@ For that matter why is a symbol shown on the Minimap for Fishing Grounds but not
 #
 ################
 
-# e.g., for an image with tilesize=128, to display the image at x=2,y=1 we would get:
-# <img src="file://PATH" style="object-fit: none; object-position: -256px -128px; width: 128px; height: 128px">
-#
-# The above does not perform the "legacy light-cyan to transparent background" transformation
-# Also file:// should be mapped to a Mojo or other web-server-mapped path to the file on this computer
+# e.g., for an image with tilesize=128, to display the image at
+# x=2,y=1 we would get: <img src="file://PATH" style="object-fit:
+# none; object-position: -256px -128px; width: 128px; height: 128px">
+
+# The above does not perform the "legacy light-cyan to transparent
+# background" transformation Also file:// should be mapped to a Mojo
+# or other web-server-mapped path to the file on this computer
 
 
 
+
+################
+
+Automatically creating menu buttons
+
+Menu buttons are 32x32 (even in a 128x128 pak) and should be centered
+and overlaid on a blank button.  In Pak128.Britain, menu_buttons.3.4
+(and several others) are currently unused and blank with the proper
+"shadow button" background.  The general case of how to find a
+suitable blank button is not yet known.
+
+A cursor icon should also be created.  Cursors should be centered in a
+paksize grid and have the (0,0) image of the object, at about half the
+size.
+
+The little modifiers for passengers, mail, goods that stations accept
+are located (in Pak128.Britain) in gui/gui64/symbols-64.dat with
+Obj=symbol under name=(Passagiere, Post, Waren) [yes these are still
+in German]
+
+Icons for goods categories are in goods-category.dat with Obj=symbol
+and name=GoodsCategories.  Image[0] is for special freight.
 

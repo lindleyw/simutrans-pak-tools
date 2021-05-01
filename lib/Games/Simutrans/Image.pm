@@ -270,11 +270,8 @@ sub mapcolor ($index) {
 ################
 # COLOR PIXEL MANIPULATION
 #
-# These 'replace_' functions return Imager objects, as opposed to
-# modifying the object's image.
-#
-# They all use Imager::transform2 (see Imager::Engines manpage) and
-# are inspired by a little program by Tony Cook (tonyc),
+# These use Imager::transform2 (see Imager::Engines manpage) and are
+# inspired by a little program by Tony Cook (tonyc),
 # http://www.perlmonks.org/?node_id=497355
 ################
 
@@ -296,10 +293,10 @@ EOS
     $constants->@{qw(from_red from_green from_blue from_alpha)}=$constants->{from_color}->rgba;
     $constants->@{qw(rr gg bb aa)}=$constants->{to_color}->rgba;
 
-    return Imager::transform2({ rpnexpr => $rpnexpr,
-                                constants => $constants,
-                                channels => 4},
-                              $self->image);
+    $self->image(  Imager::transform2({ rpnexpr => $rpnexpr,
+                                        constants => $constants,
+                                        channels => 4},
+                                      $self->image));
 }
 
 sub replace_hue ($self, $constants) {
@@ -313,10 +310,10 @@ x y getp1 !pix
 hsva
 EOS
 
-    return Imager::transform2({ rpnexpr => $rpnexpr,
-                                constants => $constants,
-                                channels => 4},
-                              $self->image);
+    $self->image( Imager::transform2({ rpnexpr => $rpnexpr,
+                                       constants => $constants,
+                                       channels => 4},
+                                     $self->image));
 }
 
 sub replace_hue_sat ($self, $constants) {
@@ -331,10 +328,10 @@ x y getp1 !pix
 hsva
 EOS
 
-    return Imager::transform2({ rpnexpr => $rpnexpr,
-                                constants => $constants,
-                                channels => 4},
-                              $self->image);
+    $self->image( Imager::transform2({ rpnexpr => $rpnexpr,
+                                       constants => $constants,
+                                       channels => 4},
+                                     $self->image));
 }
 
 sub replace_color_range ($self, $constants) {
@@ -354,10 +351,10 @@ EOS
 
     $constants->@{qw(rr gg bb aa)} = $constants->{to_color}->rgba;
 
-    return Imager::transform2({ rpnexpr => $rpnexpr,
-                                constants => $constants,
-                                channels => 4},
-                              $self->image);
+    $self->image( Imager::transform2({ rpnexpr => $rpnexpr,
+                                       constants => $constants,
+                                       channels => 4},
+                                     $self->image));
 }
 
 ################
@@ -369,18 +366,18 @@ sub change_to_player_color ($self, $colortype, $value, $opts) {
     # $colortype should be 'std' or 'alt' for standard / alternate player color
     # $value should be 0..7 for the level
 
-    $self->image( $self->replace_color_range( {%{$opts},
-                                               to_color => player_color($colortype, $value)
-                                           }));
+    $self->replace_color_range( {%{$opts},
+                                 to_color => player_color($colortype, $value)
+                             });
 }
 
 sub change_from_player_color ($self, $colortype, $value, $opts) {
     # $colortype should be 'std' or 'alt' for standard / alternate player color
     # $value should be 0..7 for the level
 
-    $self->image( $self->replace_rgb( {%{$opts},
-                                       from_color => player_color($colortype, $value),
-                                   }));
+    $self->replace_rgb( {%{$opts},
+                         from_color => player_color($colortype, $value),
+                     });
 }
 
 ################
@@ -528,7 +525,7 @@ sub read ($self, $params = {}) {
             }
         }
 
-        $self->image($image) if $params->{save};
+        $self->image($image) if $params->{save} // 1;  # can set save=0 to discard the image
     }
     1;
 }
@@ -562,7 +559,7 @@ sub make_transparent ($self) {
 
 sub subimage ($self, $x, $y) {
     # Once the tilesize of an image is known, we can slice a subimage
-    # from it, given its (x,y)
+    # from it, given its (x,y). Returns an Imager object.
     return undef unless defined $x && defined $y && defined $self->image && defined $self->tilesize;
     return $self->image->copy->crop(left=>$x*$self->tilesize, top=>$y*$self->tilesize,width=>$self->tilesize,height=>$self->tilesize);
 }
@@ -675,7 +672,8 @@ Actually reads the .PNG file.  The optional hash of parameters may include:
 
 =item save
 
-set to nonzero to retain the L<Imager> object for the image data
+set to zero to discard the L<Imager> object for the image data;
+otherwise it will be saved in the C<image> attribute.
 
 =item file
 
@@ -719,8 +717,8 @@ Returns an L<Imager> object which is only the extracted cell
 =head2 replace_rgb ($constants)
 
 This replaces each pixel of the given 'from' color to the 'to' color.
-B<NOTE:> The C<replace_> methods B<do not modify> the object's
-C<image> attribute. They all return an image object of type L<Imager>.
+B<NOTE:> The C<replace_> methods modify the object's C<image>
+attribute.
 
 The constants parameter is a hash reference with these keys:
 

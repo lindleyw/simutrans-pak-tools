@@ -7,6 +7,9 @@ use Getopt::Std;
 
 our $VERSION = "0.20";
 
+use FindBin;
+use lib "$FindBin::Bin/lib";
+
 my %opts;
 
 # -i <input file>
@@ -19,7 +22,6 @@ my %opts;
 # -n    dry run (use with -v to show diagnostics but not write file)
 getopts('i:o:p:x:y:Mvn',\%opts);
 
-use lib 'lib';
 use Games::Simutrans::Image;
 
 if ($opts{M}) {
@@ -120,42 +122,42 @@ foreach my $change (@changes) {
             print " with saturation $force_sat" if defined $force_sat;
             print ")\n";
         }
-        $image->image($image->change_from_player_colors({ colortype => ($from_hue =~ /^a/i) ? 'alt': 'std',
-                                                          hue => defined $map_color ? undef : $to_hue,
-                                                          mapcolor => $map_color,
-                                                          sat => $force_sat }));
+        $image->change_from_player_colors({ colortype => ($from_hue =~ /^a/i) ? 'alt': 'std',
+                                            hue => defined $map_color ? undef : $to_hue,
+                                            mapcolor => $map_color,
+                                            sat => $force_sat });
     } elsif ($to_hue eq 'p') {
         print " change $from_hue(±$from_hue_threshold) to PLAYER color\n" if $opts{v};
         print ' (with offset level ' . $level_offset*100 ."%)\n" if ($opts{v} && defined $level_offset);
-        $image->image($image->change_to_player_colors ( { colortype => 'std',
-                                                          hue => $from_hue,
-                                                          hue_threshold => $from_hue_threshold,
-                                                          level_offset => $level_offset } ));
+        $image->change_to_player_colors ( { colortype => 'std',
+                                            hue => $from_hue,
+                                            hue_threshold => $from_hue_threshold,
+                                            level_offset => $level_offset } );
     } elsif ($to_hue eq 'a') {
         print " change $from_hue(±$from_hue_threshold) to ALTERNATE color\n" if $opts{v};
         print ' (with offset level ' . $level_offset*100 ."%)\n" if ($opts{v} && defined $level_offset);
-        $image->image($image->change_to_player_colors ( { colortype => 'alt',
-                                                          hue => $from_hue,
-                                                          hue_threshold => $from_hue_threshold,
-                                                          level_offset => $level_offset } ));
+        $image->change_to_player_colors ( { colortype => 'alt',
+                                            hue => $from_hue,
+                                            hue_threshold => $from_hue_threshold,
+                                            level_offset => $level_offset } );
     } else {
         if (defined $force_sat) {
             next unless defined $to_hue;
             print "($from_hue(±$from_hue_threshold)->$to_hue with saturation $force_sat)\n" if $opts{v};
-            $image->image($image->replace_hue_sat({
+            $image->replace_hue_sat({
                 from_hue => $from_hue,
                 from_hue_thresh => $from_hue_threshold,
                 new_hue => $to_hue,
                 new_sat => $force_sat,
-            }));
+            });
         } else {
             next unless defined $to_hue;
             print "($from_hue(±$from_hue_threshold)->$to_hue)\n" if $opts{v};
-            $image->image($image->replace_hue({
+            $image->replace_hue({
                 from_hue => $from_hue,
                 from_hue_thresh => $from_hue_threshold,
                 new_hue => $to_hue,
-            }));
+            });
         }
     }
 }
