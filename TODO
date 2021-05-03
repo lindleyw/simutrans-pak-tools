@@ -65,3 +65,13 @@ in German]
 Icons for goods categories are in goods-category.dat with Obj=symbol
 and name=GoodsCategories.  Image[0] is for special freight.
 
+################
+
+'to_string' method for Games::Simutrans::Pak
+
+Concept: Read a datfile, parse some additional parameters (like
+'paksize=128'); create a temporary .png using only the images used,
+and adding some images (e.g., menu buttons and cursors from a set-wide
+template); write to temporary dat file; call external makeobj program
+to make the output binary .pak file
+

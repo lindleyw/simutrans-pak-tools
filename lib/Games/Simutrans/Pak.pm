@@ -50,7 +50,7 @@ has 'languages' => sub ($self) {
     # Return a list of available languages
 
     my $files_collection = Mojo::File->new($self->xlat_root)->list_tree->grep(sub{$_ =~ /\.tab\z/});
-    my @languages = $files_collection->map(sub { (fileparse($_))[0] =~ m/^(.+)\./; $1; } );
+    my @languages = $files_collection->map(sub { $_->basename('.tab') } );
     # my @files_list = File::Find::Rule->file()->name('*.tab')->readable->in($self->xlat_root);
     # my @languages = map { (fileparse($_))[0] =~ m/^(.+)\./; $1; } @files_list;
 
