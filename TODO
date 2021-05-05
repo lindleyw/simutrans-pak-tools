@@ -45,7 +45,7 @@ Grounds but not other industries? Where does that symbol come from?
 
 ################
 
-Automatically creating menu buttons
+Automatically creating menu buttons and cursors
 
 Menu buttons are 32x32 (even in a 128x128 pak) and should be centered
 and overlaid on a blank button.  In Pak128.Britain, menu_buttons.3.4
@@ -74,4 +74,14 @@ Concept: Read a datfile, parse some additional parameters (like
 and adding some images (e.g., menu buttons and cursors from a set-wide
 template); write to temporary dat file; call external makeobj program
 to make the output binary .pak file
+
+################
+
+Additional Concepts for Games::Simutrans::Image —
+
+- Combine multi-tile images into one, perhaps using location
+  information from the .dat file
+
+- Break images like TileCutter?
+
 

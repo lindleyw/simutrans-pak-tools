@@ -504,6 +504,10 @@ sub read ($self, $params = {}) {
         # Some images may have extra graphical bits (explanatory text) to one side or the bottom,
         # but we assume an image file will be more than one half used, so we can compute the
         # tile size…
+        #
+        # This must be done for each image individually, as many paksets have icons, hull/hold
+        # images, and others of varying sizes. A 128 pakset might have airplanes or ships at
+        # 256 size and icons at 64 or 32 size.
 
         if (defined $image && $image->getwidth()) {
             $self->file($file);

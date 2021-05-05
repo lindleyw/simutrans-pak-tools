@@ -111,8 +111,8 @@ sub translate($self, $string, $language = $self->language) {
 # NOTE: "Object" here refers to Simutrans's idea of an object (vehicle, waytype, etc.)
 # as defined in the pakset source.
 
-# objects is a simple hash.  Thus,
-# $pak->objects()                 # returns the entire pak object-hash 
+# objects is a simple hash.  Thus, $pak->objects() returns the entire
+# pak object-hash
 
 has objects => sub { {}; };
 
@@ -264,30 +264,28 @@ sub _object_definition_line ($self, $line, $fromfile) {
 #
 ################
 
+use Games::Simutrans::Image;
 has 'imagefiles' => sub { {} };
 
-sub _image_level ($self, $object, $level, $hash) {
+sub _image_level ($self, $object_name, $level, $image_spec) {
     # Drills down recursively, regardless of starting level, so complete proper structure exists
     if ($level == 0) {
-        if (ref $hash ne 'HASH') {
-            $DB::single = 1;
-            print STDERR "aaagh in $object\n";
+        if (ref $image_spec ne 'HASH') {
+            print STDERR "Improperly formed $object_name\n";
             return;
         }
-        if (defined $hash->{imagefile}) {
-            if (!defined $self->imagefiles->{$hash->{imagefile}}) {
-                $self->imagefiles->{$hash->{imagefile}} = {xmax => $hash->{x} // 0, ymax => $hash->{y} // 0};
-            } else {
-                if (!defined $hash->{x} || !defined $hash->{y}) {
-                    print STDERR "no coordinate for image in $object?\n";
-                }
-                $self->imagefiles->{$hash->{imagefile}}->{xmax} = $hash->{x} if $hash->{x} > $self->imagefiles->{$hash->{imagefile}}->{xmax};
-                $self->imagefiles->{$hash->{imagefile}}->{ymax} = $hash->{y} if $hash->{y} > $self->imagefiles->{$hash->{imagefile}}->{ymax};
+        my $image_file_path = scalar $image_spec->{imagefile};
+        if (defined $image_file_path) {
+            if (!defined $self->imagefiles->{ $image_file_path }) {
+                $self->imagefiles->{ $image_file_path } = Games::Simutrans::Image->new(
+                    file => $image_file_path ,  # Full path, as string
+                );
             }
+            $self->imagefiles->{$image_file_path}->record_grid_coordinate($image_spec->{x}, $image_spec->{y});
         }
-    } elsif (ref $hash eq 'HASH') {
-        foreach my $k (keys %{$hash}) {
-            $self->_image_level($object, $level - 1, $hash->{$k}) if defined $hash->{$k};
+    } elsif (ref $image_spec eq 'HASH') {
+        foreach my $k (keys %{$image_spec}) {
+            $self->_image_level($object_name, $level - 1, $image_spec->{$k}) if defined $image_spec->{$k};
         }
     }
 }
@@ -316,67 +314,17 @@ sub find_all_images ($self) {
 # IMAGE FILES
 ################
 
-# Note that the .dat files do not specify the tilesize.  Rather, that
-# is done in the makefiles by calling makeobj with the tilesize as a
-# parameter.  Furthermore, many paksets have multiple tilesizes, and
-# although many give the tilesize in a subdirectory or filename, there
-# is no regularity nor requirement to do so.
-#
-# However, we guess the tilesize by evaluating all the datfiles that
-# reference each image file, and then making the assumption that an
-# imagefile will be less than twice the maximum x,y tile reference to
-# it. Given that tiles are always square (32x32, 128x128) and that we
-# look at both x and y dimensions in this calculation (even if a
-# particular image has extra width or height, that is almost always in
-# one direction, not both, for otherwise 3/4 of the image would be
-# unused), this should result in a high success rate.
-
-use Imager;
-
-sub find_image_tile_size ($self, $file, $params = {}) {
-
-    # For each found image file,
-    # If the file exists, open it with Imager
-    # We know that Simutrans image objects always square, and always have a size a multiple of 32
-    # Some images may have extra graphical bits (explanatory text) to one side or the bottom,
-    # but we assume an image file will be more than one half used, so we can compute the
-    # tile size…
-    # This must be done for each image individually, as many paksets have icons, hull/hold
-    # images, and others of varying sizes. A 128 pakset might have airplanes or ships at
-    # 256 size and icons at 64 or 32 size.
-
-    my $images = $self->imagefiles;
-    return unless defined $images;
-
-    my $image_stats = $self->imagefiles->{$file};
-    # Skip files whose sizes we cannot guess
-    return unless ($self->imagefiles->{$file}{xmax} && $self->imagefiles->{$file}{ymax});
-    unless (defined $image_stats->{tilesize}) {
-        my $image = $self->imagefiles->{$file}{image} // Imager->new();
-        # NOTE: Older Simutrans PNG are afflicted with 'pHYs out of place' errors,
-        # which may be safely ignored, thus the flag below.
-        $image->read(file => $file, png_ignore_benign_errors => 1) unless ($image->getwidth());
-        if ($image->getwidth()) {
-            $image_stats->{size} = [$image->getwidth(), $image->getheight()];
-            my @guess_tile_size = (
-                ($image->getwidth() / ($self->imagefiles->{$file}{xmax} + 1)) & ~31,
-                ($image->getheight() / ($self->imagefiles->{$file}{ymax} + 1)) & ~31 );
-            # It's almost certainly the smaller of the two.
-            my $tile_size = $guess_tile_size[0];
-            $tile_size = $guess_tile_size[1] if $tile_size > $guess_tile_size[1]; # Choose smaller
-            $self->imagefiles->{$file}{tilesize} = $tile_size;
-            $self->imagefiles->{$file}{image} //= $image if $params->{save};
-        }
-    }
-    
-}
+# See comments in Games::Simutrans::Image for details on why and how
+# we impute the tilesize for each image.
 
 sub find_image_tile_sizes ($self, $params = {}) {
 
     my $images = $self->imagefiles;
     return unless defined $images;
-    foreach my $ii (keys %{$images}) {
-        $self->find_image_tile_size( $ii, $params );
+    foreach my $file (keys %{$images}) {
+        if (defined $self->imagefiles->{$file}) {
+            $self->imagefiles->{$file}->read($params);  # Computes tile size, and saves when parameter save=1.
+        }
     }
 }
 

@@ -5,7 +5,7 @@ no warnings 'experimental';
 
 use Getopt::Std;
 
-our $VERSION = "0.20";
+our $VERSION = "0.21";
 
 use FindBin;
 use lib "$FindBin::Bin/lib";
@@ -164,8 +164,4 @@ foreach my $change (@changes) {
 
 $image->write($opts{o}) unless $opts{n};
 
-# TODO:
-#  - Combine multi-tile images into one
-#  - Break images like TileCutter?
-#  -
-
+1;
