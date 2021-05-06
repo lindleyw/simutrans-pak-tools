@@ -58,9 +58,16 @@ has 'languages' => sub ($self) {
 
 };
 
+has 'language' => sub ($self, $lang = undef) {
+    # the default language
+    
+    my $l = $lang // $ENV{LANGUAGE} // $ENV{LANG}; $l =~ m/^(..)/;
+    return $1 || 'en';
+};
+
 has 'language_tables' => sub { {}; };
 
-sub load_language($self, $language) {
+sub load_language($self, $language = $self->language) {
     # Load a language file
     my $lang_file = Mojo::Path->new($self->xlat_root);
     push @$lang_file, "${language}.tab";
@@ -88,13 +95,6 @@ sub load_language($self, $language) {
     }
     close TRANSLAT;
 }
-
-has 'language' => sub ($self) {
-    # the default language
-    
-    my $l = $ENV{LANG} =~ m/^(..)/;
-    return $1 || 'en';
-};
 
 sub translate($self, $string, $language = $self->language) {
     # Translate a string, in the given language or the default if none given
@@ -154,13 +154,16 @@ sub objects_of_type ($self, $type) {
 
 sub save_object ($self, $obj) {
 
+    return if $obj->{obj} =~ /^dummy/;
     if (! $obj->{intro_year} && ! $obj->{retire_year}) {
-	$obj->{permanent} = 1;
+	$obj->{is_permanent} = 1;
+        $obj->{sort_key} = '0000';
     } else {
         $obj->{intro_year} ||= 1000;
         $obj->{intro_month} ||= 1;
         $obj->{retire_year} ||= 2999;
         $obj->{retire_month} ||= 12;
+        $obj->{is_internal} = $obj->{intro_year} < 100; # Internal object
 
         # Permit second-level sorting for objects with equal introductory times
         my $power = $obj->{'engine_type'};
@@ -385,7 +388,8 @@ sub load ($self, $path = $self->path) {
     return undef unless defined $path;
 
     my $file_path = Mojo::File->new($path);
-    $self->dat_files( $file_path->list_tree->grep(sub{/\.dat\z/i}) );
+    # Load directory recursively; or load a single file.
+    $self->dat_files( -d $file_path ? $file_path->list_tree->grep(sub{/\.dat\z/i}) : Mojo::Collection->new($file_path) );
 
     $self->dat_files->each ( sub {
 	$self->read_dat($_);
@@ -393,7 +397,7 @@ sub load ($self, $path = $self->path) {
 
     $self->find_all_images();
     $self->find_image_tile_sizes();
-
+    $self->load_language();
 }
 
 1;
