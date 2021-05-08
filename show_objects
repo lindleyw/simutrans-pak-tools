@@ -319,9 +319,9 @@ if (scalar keys %factory_overview) {
 	printf("%4d.%02d-%4d.%02d %-8s %-8s %-30s %3d%s %12s %3dkm/h\n",
 	       $train->{'intro_year'}, $train->{'intro_month'}, 
 	       $train->{'retire_year'}, $train->{'retire_month'}, 
-	       $train->{'engine_type'} // '--', $waytype,
-	       $pak->translate($train->{'short_name'}), $train->{'weight'}, "T",
-	       $capacity, $train->{'speed'}
+	       $train->{'engine_type'} // '--', $waytype // '--',
+	       $pak->translate($train->{'short_name'}), $train->{'weight'} // 0, "T",
+	       $capacity, $train->{'speed'} // 0
 	    );
     }
 }
@@ -343,7 +343,7 @@ if (scalar keys %factory_overview) {
 	}
 
 #    printf("%4d.%02d-%4d.%02d %-30s %3d %5d %5d %5d\n",
-	printf("%4d.%02d,%4d.%02d,%-30s,%3d, %5d, %5d, %5d\n",
+	printf("%4d-%02d,%4d-%02d,%-30s,%3d, %5d, %5d, %5d\n",
 	       $train->{'intro_year'}, $train->{'intro_month'}, 
 	       $train->{'retire_year'}, $train->{'retire_month'}, 
 	       $pak->translate($train->{'short_name'}),
@@ -357,11 +357,13 @@ if (scalar keys %factory_overview) {
 
 # Process by sort-key, which should be in order of introduction
 
-print "Timeline consistency check\n";
+print "\n\nTimeline consistency check\n==========================\n\n";
 
 sub has_constraint ($object_key, $type, $desired) {
     # Verifies that the object has a constraint of the named type with the desired value
-    my $constraints = Mojo::Collection->new(values %{$pak->object($object_key)->{constraint}{$type}});
+    my $obj = $pak->object($object_key);
+    return unless defined $obj;
+    my $constraints = Mojo::Collection->new(values %{$obj->{constraint}{$type}});
     return 1 if $constraints->size == 0; # unconstrained
     return ($constraints->first(sub { $_ eq $desired || $_ eq 'any' || $_ eq 'none' } )); # as desired, 'any', or 'none'
 }
@@ -378,6 +380,8 @@ foreach my $train_name (sort {
     my @events;
     my %vehicle_event;
 
+    my $problems;
+
     if (exists $train->{constraint}) {
 
 	foreach my $c (0..1) {
@@ -386,22 +390,39 @@ foreach my $train_name (sort {
 		foreach my $from_obj (values %{$train->{constraint}{$from}}) {
 		    next if lc($from_obj) eq 'none';
 
-		    if (!defined $pak->object($from_obj)) {
-			print "** $from_obj is not defined; it is required as a constraint of $train_name.\n";
+		    unless (defined $pak->object($from_obj)) {
+                        my $missing =
+                        "$from_obj is not defined; it is required as a constraint of $train_name.\n";
+			push @{$problems->{undefined}}, $missing;
+                        push @{$problems->{vehicle}->{$train_name}}, $missing;
 		    }
+                    unless (has_constraint($from_obj, $to, $train_name)) {
+                        my $missing = "$train_name has $from of $from_obj, " .
+                        "but $from_obj does not have $to of $train_name.\n";
+                        push @{$problems->{"missing_$to"}}, $missing;
+                        push @{$problems->{vehicle}->{$train_name}}, $missing;
+                        push @{$problems->{vehicle}->{$from_obj}}, $missing;
+                    }
+
 		    foreach my $event (qw[intro retire]) {
+                        next unless defined $pak->object($from_obj);
 			push @events, $pak->object($from_obj)->{$event};
+                        #
+                        # TODO:
+                        # The next line seems wrong. What are we trying to do? ~~~~~
+                        #
 			push @{$vehicle_event{$event}{$pak->object($from_obj)->{$event}}}, $from_obj;
-
-			# print "$from_obj ${event}s in " . $object{$from_obj}{$event} ."\n";
-
 		    }
 
-		    print " ** $train_name has $from of $from_obj, but $from_obj does not have $to of $train_name.\n"
-		      unless has_constraint($from_obj, $to, $train_name);
 		}
 	    }
 	}
+
+        # {
+        #     use Data::Dumper;
+        #     print Dumper($problems);
+        #     ; $DB::single = 1; print 'foo';
+        # }
 
 	# Replay vehicle-set timeline
 	push @events, $train->{intro}, $train->{retire};
@@ -416,11 +437,11 @@ foreach my $train_name (sort {
 	    my $unbuildable = 0;
 	    my $rebuildable = '';
 
-            $events->each(sub ($event) {
+            foreach my $event (@{$events}) {
 		foreach my $equip (@{$vehicle_event{intro}{$event}}) {
 		    $available{$equip} = 1;
 		    if ($unbuildable) {
-			print sprintf("${unbuildable_text} until %4d/%02d, when $equip becomes available${rebuildable}.\n", 
+			print sprintf("${unbuildable_text} until %4d-%02d, when $equip becomes available${rebuildable}.\n", 
 				      $event / 12, $event % 12);
 			$unbuildable = 0;
 			$rebuildable = '';
@@ -435,18 +456,18 @@ foreach my $train_name (sort {
 		}
 		if ($event == $train->{retire}) {
 		    if ($unbuildable) {
-			print sprintf("${unbuildable_text} until %4d/%02d when it retires.\n", $event / 12, $event % 12);
+			print sprintf("${unbuildable_text} until %4d-%02d when it retires.\n", $event / 12, $event % 12);
 		    }
-		    last EVENT;
+		    last;
 		}
 		if ($in_service) {
-		    if (!any {$_} (values %available)) {
+		    if (! grep {$_} (values %available)) {
 			if ($event == $train->{intro}) {
-			    $unbuildable_text = sprintf("In %4d/%02d, ", $event / 12, $event % 12) . 
+			    $unbuildable_text = sprintf("In %4d-%02d, ", $event / 12, $event % 12) . 
 			      " $train->{name} is introduced, is unbuildable because none of its constraints are available";
 			    $rebuildable = '';
 			} else {
-			    $unbuildable_text = sprintf("In %4d/%02d, vehicles(", $event / 12, $event % 12) . 
+			    $unbuildable_text = sprintf("In %4d-%02d, vehicles(", $event / 12, $event % 12) . 
 			      join (', ', @{$vehicle_event{retire}{$event}}) .
 				') retire... rendering ' . $train->{name} . " unbuildable";
 			    $rebuildable = ", making $train->{name} buildable again";
@@ -454,7 +475,7 @@ foreach my $train_name (sort {
 			$unbuildable = 1;
 		    }
 		}
-	    });
+	    }
 	}
 
     }
@@ -472,8 +493,7 @@ sub livery ($name) {
     
 }
 
-my @livery_notation = 'a'..'z';
-push @livery_notation, 'A'..'Z', '0'..'9';
+my @livery_notation = ('A'..'Z', 'AA'..'ZZ');
 my @livery_notations = @livery_notation;
 
 my %found_liveries;
@@ -501,10 +521,10 @@ foreach my $train_name (sort {
 	    $found_liveries{$livery_name}{'intro_year'} =
 		$train->{'intro_year'};
 	}
-	if ($train->{'retire_year'} > 
-	    $found_liveries{$livery_name}{'retire_year'}) {
+	if (!defined $found_liveries{$livery_name}{'retire_year'} ||
+            $train->{'retire_year'} > $found_liveries{$livery_name}{'retire_year'}) {
 	    $found_liveries{$livery_name}{'retire_year'} =
-		$train->{'retire_year'};
+            $train->{'retire_year'};
 	}
 
 	push @{$train->{'livery_list'}}, 
@@ -512,8 +532,8 @@ foreach my $train_name (sort {
     }
 
     printf("%4d %-9s %-30s  %s\n", 
-	    $train->{'intro_year'},
-	    $train->{'engine_type'},
+	    $train->{'intro_year'} // 0,
+	    $train->{'engine_type'} // '--',
 	    $pak->translate($train->{'short_name'}), 
 	    join(',',sort @{$train->{'livery_list'}}) // '--'
 	);

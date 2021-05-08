@@ -197,6 +197,7 @@ sub save_object ($self, $obj) {
 sub _object_definition_line ($self, $line, $fromfile) {
     state %this_object;
 
+    $line =~ s/\#.*\Z//; # Remove comments
     if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<subscr>(?:\[|\]|\w|\s)+)\])?\s*=>?\s*(?<value>.*?)\s*\Z/) {
         # /^\s*(?<object>\w+)\s*(?:\[(?<sub1>\w+)\](?:\[(?<sub2>\w+)\])?)?\s*=\s*(?<value>.*?)\s*\Z/) {
 	my ($object, $value) = @+{qw(object value)};
@@ -245,7 +246,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
                 }
             }
             # for Data::DeepAccess … Thanks mst and Grinnz on irc.perl.org #perl 2020-06-18
-            deep_set(\%this_object, $object, @subscripts, $value);
+            deep_set(\%this_object, $object, (map { lc } (@subscripts)), $value);
 	} else {
 	    if (lc($object) eq 'obj') {
 		# Accumulate previous object
