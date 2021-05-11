@@ -69,9 +69,9 @@ my $lang_name;
 # use Data::Dumper;
 
 
-use Games::Simutrans::Pak;
+use Games::Simutrans::Pakset;
 
-my $pak = Games::Simutrans::Pak->new(language => $language);
+my $pak = Games::Simutrans::Pakset->new(language => $language);
 $pak->xlat_root($xlat_root) if defined $xlat_root;
 
 $pak->path(shift);   # First parameter
@@ -301,27 +301,12 @@ if (scalar keys %factory_overview) {
 	    print "Availability--- -Power- -Type-    ---Name-------------------   -Wght- Capy -Speed-\n";
 	}
 
-	my $waytype = $train->{'waytype'};
-	$waytype =~ s/_track//;
-	$waytype =~ s/track/train/;
-	$waytype =~ s/water/ship/;
-	$waytype =~ s/narrowgauge/narrow/;
-
-	my $capacity = '--';
-        if ( defined $train->{payload} ) {
-            
-            if ( ref $train->{payload} eq 'HASH' ) {
-                $capacity = join(',', $train->{payload}->@{ sort keys %{$train->{payload}} } );
-            } else {
-                $capacity = sprintf("%3du", $train->{payload});
-            }
-        }
-	printf("%4d.%02d-%4d.%02d %-8s %-8s %-30s %3d%s %12s %3dkm/h\n",
+	printf("%4d.%02d-%4d.%02d %-8s %-8s %-30s %3dT %12s %3dkm/h\n",
 	       $train->{'intro_year'}, $train->{'intro_month'}, 
 	       $train->{'retire_year'}, $train->{'retire_month'}, 
-	       $train->{'engine_type'} // '--', $waytype // '--',
-	       $pak->translate($train->{'short_name'}), $train->{'weight'} // 0, "T",
-	       $capacity, $train->{'speed'} // 0
+	       $train->{'engine_type'} // '--', $train->waytype_text,
+	       $pak->translate($train->{'short_name'}), $train->{'weight'} // 0,
+	       $train->payload_text, $train->{'speed'} // 0
 	    );
     }
 }
@@ -342,11 +327,10 @@ if (scalar keys %factory_overview) {
 	    print "Cost / Performance Table.\n";
 	}
 
-#    printf("%4d.%02d-%4d.%02d %-30s %3d %5d %5d %5d\n",
-	printf("%4d-%02d,%4d-%02d,%-30s,%3d, %5d, %5d, %5d\n",
+	printf("%4d-%02d,%4d-%02d,%-40s,%3d, %5d, %5d, %5d\n",
 	       $train->{'intro_year'}, $train->{'intro_month'}, 
 	       $train->{'retire_year'}, $train->{'retire_month'}, 
-	       $pak->translate($train->{'short_name'}),
+	       $pak->translate($train->{'short_name'}) . '(' . $train->waytype_text . ')',
 	       $train->{'weight'} // 0,
 	       $train->{'power'} // 0,
 	       $train->{'tractive_effort'} // 0, 
@@ -483,74 +467,29 @@ foreach my $train_name (sort {
 
 #######################################
 
-sub livery ($name) {
-    # Return a single letter if possible;
-    # otherwise the first two letters;
-    # otherwise the first three;
-    # otherwise the first two and a number
-    state $livery_notation;  # name -> key
-    state $livery_name;      # key -> name
-    
-}
+my @liveries_by_intro = sort {$pak->liveries->{$a}->intro <=> $pak->liveries->{$b}->intro} keys %{$pak->liveries} ;
 
-my @livery_notation = ('A'..'Z', 'AA'..'ZZ');
-my @livery_notations = @livery_notation;
+print "\n\n----------------\n\nLIVERIES:\n\n";
 
-my %found_liveries;
-my %livery_notes;
-
-foreach my $train_name (sort {
-    $pak->object($a)->{'sort_key'} cmp $pak->object($b)->{'sort_key'} } keys %{$pak->objects}) {
-
-    my $train = $pak->object($train_name);
-
-    next unless ($train->{'obj'} eq 'vehicle');
-
-    next unless (defined $train->{'liverytype'});
-
-    my @our_liveries = sort keys %{$train->{'liverytype'}};
-    foreach my $livery (@our_liveries) {
-	my $livery_name = $train->{'liverytype'}{$livery};
-	if (!defined $found_liveries{$livery_name}) {
-	    my $n = shift @livery_notation;
-	    $found_liveries{$livery_name}{'note-letter'} = $n;
-	    $livery_notes{$n} = $livery_name;
-	}
-
-	if (!defined $found_liveries{$livery_name}{'intro_year'}) {
-	    $found_liveries{$livery_name}{'intro_year'} =
-		$train->{'intro_year'};
-	}
-	if (!defined $found_liveries{$livery_name}{'retire_year'} ||
-            $train->{'retire_year'} > $found_liveries{$livery_name}{'retire_year'}) {
-	    $found_liveries{$livery_name}{'retire_year'} =
-            $train->{'retire_year'};
-	}
-
-	push @{$train->{'livery_list'}}, 
-	    $found_liveries{$livery_name}{'note-letter'};
+foreach my $l (@liveries_by_intro) {
+    my $waytypes = Mojo::Collection->new;
+    $pak->liveries->{$l}->objects->each( sub { push @{$waytypes}, $pak->object($_)->waytype_text } );
+    my $ways = '';
+    if (scalar @{$waytypes}) {
+        $ways = '(' . join(', ', @{$waytypes->uniq->sort}) . ')';
     }
 
-    printf("%4d %-9s %-30s  %s\n", 
-	    $train->{'intro_year'} // 0,
-	    $train->{'engine_type'} // '--',
-	    $pak->translate($train->{'short_name'}), 
-	    join(',',sort @{$train->{'livery_list'}}) // '--'
-	);
+    printf(" %-30s %4d-%02d - %4d-%02d  (%4d vehicles) %s\n",
+           $pak->liveries->{$l}->name(),
+           $pak->liveries->{$l}->intro_year(),
+           $pak->liveries->{$l}->intro_month(),
+           $pak->liveries->{$l}->retire_year(),
+           $pak->liveries->{$l}->retire_month(),
+           scalar @{$pak->liveries->{$l}->objects()},
+           $ways,
+       );
 }
 
-if (scalar @livery_notations) {
-    print "\n\nLivery Use Table.\n";
-    print "\n\nLivery notations and usage dates:\n";
-}
-
-foreach my $liv (@livery_notations) {
-    next unless length($livery_notes{$liv});
-
-    my $i = $found_liveries{$livery_notes{$liv}}{'intro_year'};
-    my $r = $found_liveries{$livery_notes{$liv}}{'retire_year'};
-    printf ("  %3s %-30s  %4d-%4d\n", $liv, $livery_notes{$liv}, $i, $r);
-}
 
 
 1;
