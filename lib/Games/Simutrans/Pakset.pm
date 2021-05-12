@@ -182,6 +182,7 @@ sub _object_definition_line ($self, $line, $fromfile) {
 		undef $this_object{$object};
 	    }
             my $is_image = 0;
+            my $dimensions;
             if ($object =~ /^(front|back)?(image|diagonal|start|ramp|pillar)(up)?2?\z/) {
                 # NOTE: certain keys (FrontImage, BackImage) have multiple assumed axes,
                 # but not all values will give values for each; thus you may find two
@@ -190,13 +191,20 @@ sub _object_definition_line ($self, $line, $fromfile) {
                 #    FrontImage[1][0][1] = value2
                 # where value1 is actually for FrontImage[1][0][0][0][0][0], with all the
                 # unstated axes defaulting to zero.
-                print STDERR "Object " . ($this_object{name} // '??') . " has " . scalar @subscripts . " (6 expected)\n" if scalar @subscripts > 6;
-                @subscripts = map { $_ // 0 } @subscripts[0..5]; # Convert to six-dimensional with '0' defaults
+                $dimensions = (defined $1 && $2 eq 'image') ? 6 : 2;  # frontimage, backimage are 6-dim;
+                                # all other images are two-dimensional (one axis plus season).
                 $is_image++;
             } elsif ($object =~ /^((empty|freight)image|cursor|icon)\z/) {
-                print STDERR "Object " . ($this_object{name} // '??') . " has " . scalar @subscripts . " (3 expected)\n" if scalar @subscripts > 3;
-                @subscripts = map { $_ // 0 } @subscripts[0..2]; # Default to good[0] and livery[0]
+                $dimensions = 3;
                 $is_image++;
+            }
+            if (defined $dimensions) {
+                if (scalar @subscripts > $dimensions) {
+                    print STDERR "Object " . ($this_object{name} // '??') . " has " .
+                    scalar @subscripts . " ($dimensions expected)\n";
+                }
+                # Convert to correction number of dimensions, with '0' defaults:
+                @subscripts = map { $_ // 0 } @subscripts[0..($dimensions-1)]; 
             }
             if ($is_image) {
                 # Can begin as './something' but otherwise file cannot have dots within
