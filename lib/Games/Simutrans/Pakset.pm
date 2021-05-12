@@ -153,6 +153,12 @@ sub objects_of_type ($self, $type) {
 
 use Games::Simutrans::Pak;
 
+################
+#
+#  TODO: save_object, _object_definition_line() to be moved into Pak.pm
+#
+################
+
 sub save_object ($self, $obj) {
 
     # Create and save an individual Pak object for this object's definition.

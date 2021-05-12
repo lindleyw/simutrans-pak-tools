@@ -1,5 +1,22 @@
 ################
 #
+# Complete the splitting of Pakset into (Pakset, Pak)
+#
+################
+
+Move logic from save_object() and _object_defintion_line(), along with
+Pakset::read_dat(), into:
+
+   Pakset::read_dat() that only splits a .dat file into segments
+   delimited by a line of at least three dashes '---'
+
+   Pak::from_string() that takes one of those segments and puts all
+   elements into its Pak object
+
+Then complement with a new Pak::to_string
+
+################
+#
 #
 ################
 

@@ -13,6 +13,33 @@ has 'intro';
 has 'retire';
 has 'name';
 
+sub intro_year ($self, $value = undef) {
+    $self->intro( $value * 12 + (($self->intro() // 0) % 12) ) if defined $value;
+    return int($self->intro() / 12);
+}
+
+sub intro_month ($self, $value = undef) {
+    $self->intro( (($self->intro_year() // 0) * 12) + $value ) if defined $value;
+    return $self->intro() % 12;
+}
+
+sub retire_year ($self, $value = undef) {
+    $self->retire( $value * 12 + (($self->retire() // 0) % 12) ) if defined $value;
+    return int($self->retire() / 12);
+}
+
+sub retire_month ($self, $value = undef) {
+    $self->retire( (($self->retire_year() // 0) * 12) + $value ) if defined $value;
+    return $self->retire() % 12;
+}
+
+################
+#
+# TODO: Change this into from_string() with appropriate changes in
+# Pakset.pm
+#
+################
+
 sub save ($self, $obj) {
 
     return undef if ($obj->{obj} // '') =~ /^dummy/;
@@ -24,9 +51,6 @@ sub save ($self, $obj) {
         $obj->{intro_month} ||= 1;
         $obj->{retire_year} ||= 2999;
         $obj->{retire_month} ||= 12;
-        foreach my $period (qw(intro retire)) {
-            $obj->{$period} = $obj->{$period . '_year'} . '-' . $obj->{$period . '_month'};
-        }
         $obj->{is_internal} = $obj->{intro_year} < 100; # Internal object
 
         # Permit second-level sorting for objects with equal introductory times
@@ -47,7 +71,8 @@ sub save ($self, $obj) {
 
     if (exists $obj->{'intro_year'}) {
 	foreach my $period (qw[intro retire]) {
-	    $obj->{$period} = $obj->{$period.'_year'} * 12 + $obj->{$period . '_month'};
+	    $self->$period ( (delete $obj->{$period.'_year'}) * 12 +
+                             (delete $obj->{$period . '_month'}) );
 	}
     }
 
@@ -57,6 +82,8 @@ sub save ($self, $obj) {
     }
     return $self;        # for chaining
 }
+
+################
 
 sub waytype_text ($self) {
     # Return a standardized, shorter version of the waytype
