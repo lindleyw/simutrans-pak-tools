@@ -30,12 +30,23 @@ sub valid ($self) {
 # LANGUAGE SUPPORT
 ################
 
-has 'xlat_root' => sub ($self) {
-    # Location of the translation text files
-    # Assumes the path has been set
-    my $xlat = Mojo::Path->new($self->path->to_string);
-    push @$xlat, 'text';
-    return $xlat->to_string;
+has '_xlat_root';
+
+sub xlat_root ($self, $new_root = undef) {
+    # Location of the translation text files.  Lazy assignment in case
+    # we access before the path has been set.
+    my $xlat;
+    if (defined $new_root) {
+        $xlat = ref $new_root ? $new_root : Mojo::Path->new($new_root);
+    } else {
+        if (!defined $self->_xlat_root) {
+            return undef unless defined $self->path;
+            $xlat = Mojo::Path->new($self->path->to_string);
+            push @$xlat, 'text';
+            $self->_xlat_root($xlat);
+        }
+    }
+    return $self->_xlat_root->to_string;
 };
 
 # Find a list of all the language (translation) files for the pak
