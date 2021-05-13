@@ -5,7 +5,6 @@ use Mojo::Path;
 use Mojo::File;
 use List::Util;
 use Path::ExpandTilde;
-use Data::DeepAccess qw(deep_exists deep_get deep_set);
 
 has 'name';           # An identifying name for the pak
 
@@ -159,92 +158,12 @@ use Games::Simutrans::Pak;
 #
 ################
 
-sub save_object ($self, $obj) {
+sub save ($self, $obj) {
 
-    # Create and save an individual Pak object for this object's definition.
-    my $saved_object = Games::Simutrans::Pak->new->save($obj); # returns undef if dummy object
-    if (defined $saved_object) {
-        $self->object($obj->{name}, $saved_object);
+    # Remember each Pak object instance
+    if (defined $obj) {
+        $self->object($obj->{name}, $obj);
         $self->object_types->{$obj->{obj}}++;
-    }
-}
-
-# Parse a line of definition from a .dat file, and add it to our Pak object.
-# Builds a hash in a buffer. At eof, pass this 'obj=dummy' to flush the object being built.
-
-sub _object_definition_line ($self, $line, $fromfile) {
-    state %this_object;
-
-    $line =~ s/\#.*\Z//; # Remove comments
-    if ($line =~ /^\s*(?<object>\w+)\s*(?:\[(?<subscr>(?:\[|\]|\w|\s)+)\])?\s*=>?\s*(?<value>.*?)\s*\Z/) {
-        # /^\s*(?<object>\w+)\s*(?:\[(?<sub1>\w+)\](?:\[(?<sub2>\w+)\])?)?\s*=\s*(?<value>.*?)\s*\Z/) {
-	my ($object, $value) = @+{qw(object value)};
-        $object = lc($object);
-        my @subscripts;
-        @subscripts = split /[\[\]]+/, $+{subscr} if defined $+{subscr};
-	if (scalar @subscripts || $object =~ /^(?:cursor|icon)\z/) {
-	    # NOTE: Values with subscripts, as "value[0]=50", will clobber a previous "value=50".
-	    if (ref(\$this_object{$object}) eq 'SCALAR') {
-		undef $this_object{$object};
-	    }
-            my $is_image = 0;
-            my $dimensions;
-            if ($object =~ /^(front|back)?(image|diagonal|start|ramp|pillar)(up)?2?\z/) {
-                # NOTE: certain keys (FrontImage, BackImage) have multiple assumed axes,
-                # but not all values will give values for each; thus you may find two
-                # entries as:
-                #    FrontImage[1][0]    = value1
-                #    FrontImage[1][0][1] = value2
-                # where value1 is actually for FrontImage[1][0][0][0][0][0], with all the
-                # unstated axes defaulting to zero.
-                $dimensions = (defined $1 && $2 eq 'image') ? 6 : 2;  # frontimage, backimage are 6-dim;
-                                # all other images are two-dimensional (one axis plus season).
-                $is_image++;
-            } elsif ($object =~ /^((empty|freight)image|cursor|icon)\z/) {
-                $dimensions = 3;
-                $is_image++;
-            }
-            if (defined $dimensions) {
-                if (scalar @subscripts > $dimensions) {
-                    print STDERR "Object " . ($this_object{name} // '??') . " has " .
-                    scalar @subscripts . " ($dimensions expected)\n";
-                }
-                # Convert to correction number of dimensions, with '0' defaults:
-                @subscripts = map { $_ // 0 } @subscripts[0..($dimensions-1)]; 
-            }
-            if ($is_image) {
-                # Can begin as './something' but otherwise file cannot have dots within
-                if ($value =~ /^(?<image>\.?[^.]+)           
-                               (?:\.(?<y>\d+)
-                                   (?:\.(?<x>\d+))?
-                                   (?:,(?<xoff>\d+)
-                                       (?:,(?<yoff>\d+))?
-                                   )?
-                               )?/xa) {
-                    $value = { ( map { $_ => $+{$_} } qw(image xoff yoff) ),   # undef OK in these
-                               ( map { $_ => $+{$_} // 0 } qw( x y ) ) };      # these default to zero
-                    # Override above in case of older "imagefile.3" form, which assumes column (x) only
-                    if (!defined $+{x} && $object =~ /^(front|back|empty|freight)/) {  # 
-                        $value->{x} = $+{y} // 0; $value->{y} = 0;
-                    }
-                    $value->{imagefile} = Mojo::File->new($fromfile)->sibling($value->{image}.'.png') unless $value->{image} eq '-';
-                    $this_object{_hasimages}{$object}++;
-                }
-            }
-            # for Data::DeepAccess … Thanks mst and Grinnz on irc.perl.org #perl 2020-06-18
-            deep_set(\%this_object, $object, (map { lc } (@subscripts)), $value);
-	} else {
-	    if (lc($object) eq 'obj') {
-		# Accumulate previous object
-		if (defined $this_object{'name'}) {
-		    # print "------------------------\n";
-                    $this_object{_filename} = $fromfile;
-		    $self->save_object(\%this_object);
-		    %this_object = ();
-		}
-	    }
-	    $this_object{lc($object)} = $value;
-	}
     }
 }
 
@@ -393,14 +312,16 @@ has 'dat_files';
 sub read_dat ($self, $filename) {
 
     # Read a .dat file and pass the entire string to be parsed
+    my $dat_text;
+    eval { $dat_text = Mojo::File->new($filename)->slurp; 1; } or die "Can't open $filename: $!";
 
-    open ( my $fh, '<', $filename ) or die "Can't open $filename: $!";
-    # print STDERR "** Processing $filename\n";
-    while ( my $line = <$fh> ) {
-	$self->_object_definition_line($line, $filename);
+    # A dat file may contain multiple objects, separated by a dashed line.
+    foreach my $object_text (split(/\n-{2,}\s*\n/, $dat_text)) {
+        my $new_object = Games::Simutrans::Pak->new->from_string({ file => $filename,
+                                                                   text => $object_text});
+        $self->save($new_object) if defined $new_object;
     }
-    close $fh;
-    $self->_object_definition_line('obj=dummy', $filename); # flush trailing object. no 'name=x' so can't be saved.
+
 }
 
 sub load ($self, $path = $self->path) {

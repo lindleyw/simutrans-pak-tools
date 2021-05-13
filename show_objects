@@ -84,7 +84,7 @@ $pak->load;
 {
 
     foreach my $object_name (keys %{$pak->objects}) {
-	if ($pak->object($object_name)->{is_internal}) {
+	if ($pak->object($object_name)->{_is_internal}) {
 	    print "   $object_name  is an internal object\n";
 	}
     }
@@ -96,15 +96,14 @@ $pak->load;
     my %chronology;
 
     foreach my $object_name (keys %{$pak->objects}) {
-	next if $pak->object($object_name)->{is_internal};  # Ignore pakset internals
+	next if $pak->object($object_name)->{_is_internal};  # Ignore pakset internals
 	foreach my $event (qw(intro retire)) {
-            # ; $DB::single = 1 unless defined $pak->object($object_name)->{"${event}_year"} &&
-            # defined $pak->object($object_name)->{"${event}_month"};
-            next if $pak->object($object_name)->{is_permanent};
+            next if $pak->object($object_name)->{_is_permanent};
+            my ($event_year, $event_month) = ("${event}_year", "${event}_month");
 	    my $show_date = sprintf("%4d-%02d",
-                                    $pak->object($object_name)->{"${event}_year"},
-                                    $pak->object($object_name)->{"${event}_month"});
-	    my $event_key = "${show_date}-$event-" . lc($pak->object($object_name)->{'short_name'});
+                                    $pak->object($object_name)->$event_year,
+                                    $pak->object($object_name)->$event_month);
+	    my $event_key = "${show_date}-$event-" . lc($pak->object($object_name)->{_short_name});
 
 	    my @notes;
 	    if (defined $pak->object($object_name)->{'speed'}) {
@@ -130,15 +129,15 @@ $pak->load;
                 }
 		push @notes, $text if defined $text;
 	    }
-	    if ($event eq 'retire' && ! $pak->object($object_name)->{is_permanent}) {
-		push @notes, 'introduced ' . $pak->object($object_name)->{intro_year};
+	    if ($event eq 'retire' && ! $pak->object($object_name)->{_is_permanent}) {
+		push @notes, 'introduced ' . $pak->object($object_name)->intro_year;
 	    }
 	    my $note = scalar @notes ? ' (' . join('; ',@notes) . ')' : '';
 	    $chronology{$event_key} = sprintf("%-10s: %-10s %-10s %s",
 					      $show_date,
 					      $event eq 'intro' ? 'Introduce' : 'Retire',
 					      $pak->object($object_name)->{'obj'},
-					      $pak->translate($pak->object($object_name)->{'short_name'} . $note),
+					      $pak->translate($pak->object($object_name)->{_short_name} . $note),
 		);
 	}
     }
@@ -156,17 +155,17 @@ my %commodity;
 my $year_lower = undef;
 my $year_upper = undef;
 
-foreach my $factory_name (sort { $pak->object($a)->{'sort_key'} cmp $pak->object($b)->{'sort_key'} } keys %{$pak->objects}) {
+foreach my $factory_name (sort { $pak->object($a)->{_sort_key} cmp $pak->object($b)->{_sort_key} } keys %{$pak->objects}) {
     my $factory = $pak->object($factory_name);
 
     next unless ($factory->{'obj'} eq 'factory');
 
     # NOTE: Relies on filter_object() above to fill default times
-    my $intro_year = $factory->{'intro_year'} * 12 + $factory->{'intro_month'} - 1;
+    my $intro_year = $factory->intro_year * 12 + $factory->intro_month - 1;
     if (!defined($year_lower) || $intro_year < $year_lower) {
 	$year_lower = $intro_year;
     }
-    my $retire_year = $factory->{'retire_year'} * 12 + $factory->{'retire_month'} - 1;
+    my $retire_year = $factory->retire_year * 12 + $factory->retire_month - 1;
     if (!defined($year_upper) || $retire_year > $year_upper) {
 	$year_upper = $retire_year;
     }
@@ -291,7 +290,7 @@ if (scalar keys %factory_overview) {
 {
     my $header_shown = 0;
 
-    foreach my $train_name (sort { $pak->object($a)->{'sort_key'} cmp $pak->object($b)->{'sort_key'} }
+    foreach my $train_name (sort { $pak->object($a)->{_sort_key} cmp $pak->object($b)->{_sort_key} }
                             keys %{$pak->objects}) {
 	my $train = $pak->object($train_name);
 
@@ -302,10 +301,10 @@ if (scalar keys %factory_overview) {
 	}
 
 	printf("%4d.%02d-%4d.%02d %-8s %-8s %-30s %3dT %12s %3dkm/h\n",
-	       $train->{'intro_year'}, $train->{'intro_month'}, 
-	       $train->{'retire_year'}, $train->{'retire_month'}, 
+	       $train->intro_year, $train->intro_month, 
+	       $train->retire_year, $train->retire_month,
 	       $train->{'engine_type'} // '--', $train->waytype_text,
-	       $pak->translate($train->{'short_name'}), $train->{'weight'} // 0,
+	       $pak->translate($train->{_short_name}), $train->{'weight'} // 0,
 	       $train->payload_text, $train->{'speed'} // 0
 	    );
     }
@@ -315,7 +314,7 @@ if (scalar keys %factory_overview) {
     my $header_shown = 0;
 
     foreach my $train_name (sort {
-	$pak->object($a)->{'sort_key'} cmp $pak->object($b)->{'sort_key'} } keys %{$pak->objects}) {
+	$pak->object($a)->{_sort_key} cmp $pak->object($b)->{_sort_key} } keys %{$pak->objects}) {
 
 	my $train = $pak->object($train_name);
 
@@ -328,9 +327,9 @@ if (scalar keys %factory_overview) {
 	}
 
 	printf("%4d-%02d,%4d-%02d,%-40s,%3d, %5d, %5d, %5d\n",
-	       $train->{'intro_year'}, $train->{'intro_month'}, 
-	       $train->{'retire_year'}, $train->{'retire_month'}, 
-	       $pak->translate($train->{'short_name'}) . '(' . $train->waytype_text . ')',
+	       $train->intro_year, $train->intro_month, 
+	       $train->retire_year, $train->retire_month,
+	       $pak->translate($train->{_short_name}) . '(' . $train->waytype_text . ')',
 	       $train->{'weight'} // 0,
 	       $train->{'power'} // 0,
 	       $train->{'tractive_effort'} // 0, 
@@ -352,8 +351,12 @@ sub has_constraint ($object_key, $type, $desired) {
     return ($constraints->first(sub { $_ eq $desired || $_ eq 'any' || $_ eq 'none' } )); # as desired, 'any', or 'none'
 }
 
+sub yyyymm ($month) {
+    return defined $month ? sprintf("%04d-%02d", ($month / 12), (($month % 12) +1)) : '';
+}
+
 foreach my $train_name (sort {
-    $pak->object($a)->{'sort_key'} cmp $pak->object($b)->{'sort_key'} } keys %{$pak->objects}) {
+    $pak->object($a)->{_sort_key} cmp $pak->object($b)->{_sort_key} } keys %{$pak->objects}) {
 
     my $train = $pak->object($train_name);
 
@@ -390,26 +393,16 @@ foreach my $train_name (sort {
 
 		    foreach my $event (qw[intro retire]) {
                         next unless defined $pak->object($from_obj);
-			push @events, $pak->object($from_obj)->{$event};
-                        #
-                        # TODO:
-                        # The next line seems wrong. What are we trying to do? ~~~~~
-                        #
-			push @{$vehicle_event{$event}{$pak->object($from_obj)->{$event}}}, $from_obj;
+			push @events, $pak->object($from_obj)->$event;
+			push @{$vehicle_event{$event}{$pak->object($from_obj)->$event}}, $from_obj;
 		    }
 
 		}
 	    }
 	}
 
-        # {
-        #     use Data::Dumper;
-        #     print Dumper($problems);
-        #     ; $DB::single = 1; print 'foo';
-        # }
-
 	# Replay vehicle-set timeline
-	push @events, $train->{intro}, $train->{retire};
+	push @events, $train->intro, $train->retire;
 	my $events = Mojo::Collection->new(@events)->sort(sub {$a <=> $b})->uniq;
 
 	my $unbuildable_text;
@@ -425,8 +418,8 @@ foreach my $train_name (sort {
 		foreach my $equip (@{$vehicle_event{intro}{$event}}) {
 		    $available{$equip} = 1;
 		    if ($unbuildable) {
-			print sprintf("${unbuildable_text} until %4d-%02d, when $equip becomes available${rebuildable}.\n", 
-				      $event / 12, $event % 12);
+			print sprintf("${unbuildable_text} until %s, when $equip becomes available${rebuildable}.\n", 
+				      yyyymm($event));
 			$unbuildable = 0;
 			$rebuildable = '';
 		    }
@@ -434,27 +427,28 @@ foreach my $train_name (sort {
 		foreach my $equip (@{$vehicle_event{retire}{$event}}) {
 		    $available{$equip} = 0;
 		}
-		if ($event == $train->{intro}) {
+		if ($event == $train->intro) {
 		    # introducing ourselves
 		    $in_service = 1;
 		}
-		if ($event == $train->{retire}) {
+		if ($event == $train->retire) {
 		    if ($unbuildable) {
-			print sprintf("${unbuildable_text} until %4d-%02d when it retires.\n", $event / 12, $event % 12);
+			print sprintf("${unbuildable_text} until %s when it retires.\n", yyyymm($event));
 		    }
 		    last;
 		}
 		if ($in_service) {
 		    if (! grep {$_} (values %available)) {
-			if ($event == $train->{intro}) {
-			    $unbuildable_text = sprintf("In %4d-%02d, ", $event / 12, $event % 12) . 
-			      " $train->{name} is introduced, is unbuildable because none of its constraints are available";
+                        ; $DB::single = 1 unless defined $train->intro;
+			if ($event == $train->intro) {
+			    $unbuildable_text = sprintf("In %s, ", yyyymm($event)) . ' ' .
+			      $train->{name} . ' is introduced, is unbuildable because none of its constraints are available';
 			    $rebuildable = '';
 			} else {
-			    $unbuildable_text = sprintf("In %4d-%02d, vehicles(", $event / 12, $event % 12) . 
+			    $unbuildable_text = sprintf("In %s, vehicles(", yyyymm($event)) . 
 			      join (', ', @{$vehicle_event{retire}{$event}}) .
-				') retire... rendering ' . $train->{name} . " unbuildable";
-			    $rebuildable = ", making $train->{name} buildable again";
+				') retire... rendering ' . $train->name . ' unbuildable';
+			    $rebuildable = ', making ' . $train->name . ' buildable again';
 			}
 			$unbuildable = 1;
 		    }

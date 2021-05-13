@@ -25,17 +25,17 @@ sub record_use ($self, $obj) {
 
     my $name = $obj->name;
 
-    $self->intro($obj->{intro}) if (!defined $self->intro) || ($self->intro > $obj->{intro}); # find earliest
-    $self->retire($obj->{retire}) if (!defined $self->retire) || ($self->retire < $obj->{retire}); # find last
+    $self->intro($obj->intro) if (!defined $self->intro) || ($self->intro > $obj->intro); # find earliest
+    $self->retire($obj->retire) if (!defined $self->retire) || ($self->retire < $obj->retire); # find last
 
     push @{$self->objects}, $obj->name;
     $self->objects($self->objects->uniq);
 }
 
 sub intro_year ($self) { return $self->intro / 12; }
-sub intro_month ($self) { return $self->intro % 12; }
+sub intro_month ($self) { return $self->intro % 12 + 1; }
 sub retire_year ($self) { return $self->retire / 12; }
-sub retire_month ($self) { return $self->retire % 12; }
+sub retire_month ($self) { return $self->retire % 12 + 1; }
 
 1;
 
