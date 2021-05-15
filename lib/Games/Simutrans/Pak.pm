@@ -218,6 +218,34 @@ sub _recursively_do_something {
     return '';
 }
 
+sub deep_print ($self, $attribute, @keys) {
+    my $value = deep_get($self->{$attribute}, @keys);
+    if (ref $value eq 'HASH') {
+        my $text;
+        my $has_values = [];
+        my $is_image = exists $value->{image} && exists $value->{x};
+        foreach my $k (sort keys %{$value}) {
+            if ($is_image && !ref deep_get($self->{$attribute}, @keys, $k)) {
+                push @{$has_values}, $k;
+            } else {
+                $text .= $self->deep_print($attribute, @keys, $k);
+            }
+        }
+        if (scalar @{$has_values}) {
+            # TODO: Only if this is an image!
+            my $image_spec = $value->{image} .
+            '.' . ($value->{y}//0) .
+            '.' . ($value->{x}//0);
+            $image_spec .= ',' . ($value->{xoff}//0) . ',' . ($value->{yoff}//0)
+            if defined $value->{xoff} || $value->{yoff};
+            return $attribute . '[' . join('][', @keys) . ']=' . $image_spec . "\n";
+        }
+        return $text;
+    } else {
+        return $attribute . '[' . join('][', @keys) . ']=' . $value . "\n";
+    }
+}
+
 sub to_string ($self) {
     # Preferred order to emit attributes.  Any others will be emitted
     # in random order after these.
@@ -255,7 +283,7 @@ sub to_string ($self) {
                               if (ref $self->{$emit_key} ne 'HASH') {
                                   $text .= "$_=" . $to_emit{$emit_key} . "\n";  # simple value
                               } else {
-                                  $text .= "$_=" . _recursively_do_something($self, $emit_key, $_, $to_emit{$emit_key}) . "\n";
+                                  $text .= $self->deep_print($emit_key);
                               }
                               delete $to_emit{$emit_key};
                           }
@@ -268,7 +296,7 @@ sub to_string ($self) {
             if (ref $self->{$k} ne 'HASH') {
                 $text .= "$k=" . $self->{$k} . "\n";  # simple value
             } else {
-                $text .= "$k=" . _recursively_do_something($self, $k, $k, $to_emit{$k}) . "\n";
+                $text .= $self->deep_print($k);
             }
         }
     }
