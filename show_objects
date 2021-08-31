@@ -68,13 +68,23 @@ my $lang_name;
 
 # use Data::Dumper;
 
-
 use Games::Simutrans::Pakset;
 
 my $pak = Games::Simutrans::Pakset->new(language => $language);
 $pak->xlat_root($xlat_root) if defined $xlat_root;
 
-$pak->path(shift);   # First parameter
+{
+    my $path = shift;  # First parameter
+    if (!defined $path) {
+        if (-e 'text') {
+            $path = '.';
+            warn "Assuming current directory for pakset root; please specify '.' as final argument";
+        } else {
+            die "Must specify pakset root as final argument";
+        }
+    }
+    $pak->path($path);
+}
 
 $pak->load;
 #
@@ -103,7 +113,7 @@ $pak->load;
 	    my $show_date = sprintf("%4d-%02d",
                                     $pak->object($object_name)->$event_year,
                                     $pak->object($object_name)->$event_month);
-	    my $event_key = "${show_date}-$event-" . lc($pak->object($object_name)->{_short_name});
+	    my $event_key = "${show_date}-$event-" . lc($pak->object($object_name)->{name});
 
 	    my @notes;
 	    if (defined $pak->object($object_name)->{'speed'}) {
@@ -137,7 +147,7 @@ $pak->load;
 					      $show_date,
 					      $event eq 'intro' ? 'Introduce' : 'Retire',
 					      $pak->object($object_name)->{'obj'},
-					      $pak->translate($pak->object($object_name)->{_short_name} . $note),
+					      $pak->translate($pak->object($object_name)->name . $note),
 		);
 	}
     }
@@ -304,7 +314,7 @@ if (scalar keys %factory_overview) {
 	       $train->intro_year, $train->intro_month, 
 	       $train->retire_year, $train->retire_month,
 	       $train->{'engine_type'} // '--', $train->waytype_text,
-	       $pak->translate($train->{_short_name}), $train->{'weight'} // 0,
+	       $pak->translate($train->name), $train->{'weight'} // 0,
 	       $train->payload_text, $train->{'speed'} // 0
 	    );
     }
@@ -329,7 +339,7 @@ if (scalar keys %factory_overview) {
 	printf("%4d-%02d,%4d-%02d,%-40s,%3d, %5d, %5d, %5d\n",
 	       $train->intro_year, $train->intro_month, 
 	       $train->retire_year, $train->retire_month,
-	       $pak->translate($train->{_short_name}) . '(' . $train->waytype_text . ')',
+	       $pak->translate($train->name) . '(' . $train->waytype_text . ')',
 	       $train->{'weight'} // 0,
 	       $train->{'power'} // 0,
 	       $train->{'tractive_effort'} // 0, 
@@ -439,10 +449,9 @@ foreach my $train_name (sort {
 		}
 		if ($in_service) {
 		    if (! grep {$_} (values %available)) {
-                        ; $DB::single = 1 unless defined $train->intro;
 			if ($event == $train->intro) {
 			    $unbuildable_text = sprintf("In %s, ", yyyymm($event)) . ' ' .
-			      $train->{name} . ' is introduced, is unbuildable because none of its constraints are available';
+			      $train->name . ' is introduced, is unbuildable because none of its constraints are available';
 			    $rebuildable = '';
 			} else {
 			    $unbuildable_text = sprintf("In %s, vehicles(", yyyymm($event)) . 
