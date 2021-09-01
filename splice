@@ -89,6 +89,7 @@ foreach my $r (0..$height-1) {
     foreach my $c (0..$width-1) {
         next if $cells[$r][$c] eq '-';
         my ($src_y, $src_x) = split '\.', $cells[$r]->[$c];  # row.column format
+                                # NOTE: Might want to use 'rubthrough' (see Imager::Transformations)
         $new_img->paste(left => $c * $paksize, top => $r * $paksize,
                         src => $orig_img, src_minx => $src_x * $paksize, src_miny => $src_y * $paksize,
                         width => $paksize, height => $paksize);

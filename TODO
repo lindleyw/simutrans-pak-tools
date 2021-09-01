@@ -1,57 +1,20 @@
 ################
 #
-#
-#
-################
-
-
-is_internal -> _is_internal
-
-################
-#
+# Projects under consideration
 #
 ################
 
+Pak::from_string -- (recursively) suppress trailing zero dimensions
+when only one value at that level, except for first dimension.
+
+################
+# Combine multiple images into one?
+################
 
 scan thru datfiles
 locate keyword "source_image" or similar?
 remap source image to destination image(s) given in front/back image...
 also remap colors using factory mapcolor ... new "mapcolor2" ?
-
-Can we compute mapcolor from goods specifications?
-Where are the goods colors given?
-Why does Passengers in 128.Britain have a mapcolor but no other goods do?
-
-See also:  https://forum.simutrans.com/index.php/topic,20006.msg188188.html#msg188188
-
-Shouldn't the raw materials (mines, farms) have a dark color of a
-given hue, with the factories having intermediate lightness levels,
-and consumers (stores) with the lightest tone of the given
-hue+saturation ?
-
-
-
-
-For that matter why is a symbol shown on the Minimap for Fishing
-Grounds but not other industries? Where does that symbol come from?
-
-
-################
-#
-# Returning source PNGs cropped for a single image
-#
-################
-
-# e.g., for an image with tilesize=128, to display the image at
-# x=2,y=1 we would get: <img src="file://PATH" style="object-fit:
-# none; object-position: -256px -128px; width: 128px; height: 128px">
-
-# The above does not perform the "legacy light-cyan to transparent
-# background" transformation Also file:// should be mapped to a Mojo
-# or other web-server-mapped path to the file on this computer
-
-
-
 
 ################
 
@@ -87,11 +50,59 @@ to make the output binary .pak file
 
 ################
 
-Additional Concepts for Games::Simutrans::Image —
+Combine multi-tile images into one, perhaps using location information
+from the .dat file
 
-- Combine multi-tile images into one, perhaps using location
-  information from the .dat file
+################
 
-- Break images like TileCutter?
+Break images like TileCutter?  Perhaps even read TileCutter project files?
 
+################
+#
+# Returning source PNGs cropped for a single image
+#
+################
+
+# e.g., for an image with tilesize=128, to display the image at
+# x=2,y=1 we would get: <img src="file://PATH" style="object-fit:
+# none; object-position: -256px -128px; width: 128px; height: 128px">
+
+# The above does not perform the "legacy light-cyan to transparent
+# background" transformation Also file:// should be mapped to a Mojo
+# or other web-server-mapped path to the file on this computer
+
+################
+#
+# Goods colors
+#
+################
+
+Where are the goods colors given?  In obj=good, mapcolor=.
+
+Not all paks specify this (formerly, Passengers in 128.Britain had a
+mapcolor but no other goods did)
+
+See also:  https://forum.simutrans.com/index.php/topic,20006.msg188188.html#msg188188
+
+Q: Shouldn't the raw materials (mines, farms) have a dark color of a
+given hue, with the factories having intermediate lightness levels,
+and consumers (stores) with the lightest tone of the given
+hue+saturation ?
+
+################
+#
+# Goods images on minimap
+#
+################
+
+These are specified with e.g., gui/gui64/gui_extended_symbols.dat in 128 Britain as
+
+    Obj=symbol
+
+Q: Why is a symbol shown on the Minimap for Fishing Grounds but not
+other industries? Where does that symbol come from?
+
+A: Seems to be hard-coded as Obj=symbol, Name=IndustrySectors,
+Image[0] value.  Then in gui/minimap.cc it checks if a 'fab' (factory)
+get_sector is 'marine_resource' and displays exactly that icon.
 
